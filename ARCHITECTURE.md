@@ -20,10 +20,16 @@ never knows component-specific event variants.
 - in-memory recording sink for tests;
 - Unix socket sink for CLI-visible testing traces.
 
+`TraceLog::record` is intentionally non-fatal: tracing is observability, not
+the runtime contract. `TraceLog::record_result` exposes the fallible path for
+tests and callers that need to assert socket delivery.
+
 `TraceFrame<Event>` owns the length-prefixed frame mechanics. It writes a
 four-byte big-endian archive length followed by the component-provided rkyv
 archive bytes. `TraceSocketListener<Event>` binds a Unix socket, receives
 those frames, decodes them through `TraceEventFrame`, and returns typed events.
+Tests can either collect for a fixed time window or collect until an expected
+event count arrives before a timeout.
 
 ## Boundaries
 

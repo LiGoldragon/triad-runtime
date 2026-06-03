@@ -156,16 +156,19 @@ where
     }
 
     pub fn record(&self, event: Event) {
+        if let Err(error) = self.record_result(event) {
+            eprintln!("triad-runtime trace: {error}");
+        }
+    }
+
+    pub fn record_result(&self, event: Event) -> Result<(), TraceError> {
         match &self.destination {
-            TraceDestination::Disabled => {}
+            TraceDestination::Disabled => Ok(()),
             TraceDestination::Recording(events) => {
                 events.lock().expect("trace event lock").push(event);
+                Ok(())
             }
-            TraceDestination::Socket(path) => {
-                if let Err(error) = path.write_event(&event) {
-                    eprintln!("triad-runtime trace: {error}");
-                }
-            }
+            TraceDestination::Socket(path) => path.write_event(&event),
         }
     }
 }
@@ -215,21 +218,39 @@ where
         let deadline = Instant::now() + duration;
         let mut events = Vec::new();
         while Instant::now() < deadline {
-            match self.listener.accept() {
-                Ok((mut stream, _address)) => {
-                    events.push(TraceFrame::<Event>::read_from(&mut stream)?.into_event());
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(5));
-                }
-                Err(error) => return Err(TraceError::Io(error)),
-            }
+            self.collect_available_event(&mut events)?;
+        }
+        Ok(events)
+    }
+
+    pub fn collect_until_count(
+        &self,
+        expected_count: usize,
+        timeout: Duration,
+    ) -> Result<Vec<Event>, TraceError> {
+        let deadline = Instant::now() + timeout;
+        let mut events = Vec::new();
+        while events.len() < expected_count && Instant::now() < deadline {
+            self.collect_available_event(&mut events)?;
         }
         Ok(events)
     }
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    fn collect_available_event(&self, events: &mut Vec<Event>) -> Result<(), TraceError> {
+        match self.listener.accept() {
+            Ok((mut stream, _address)) => {
+                events.push(TraceFrame::<Event>::read_from(&mut stream)?.into_event());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => return Err(TraceError::Io(error)),
+        }
+        Ok(())
     }
 }
 
