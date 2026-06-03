@@ -172,9 +172,7 @@ where
     }
 
     pub fn record(&self, event: Event) {
-        if let Err(error) = self.record_result(event) {
-            eprintln!("triad-runtime trace: {error}");
-        }
+        let _ = self.record_result(event);
     }
 
     pub fn record_result(&self, event: Event) -> Result<(), TraceError> {

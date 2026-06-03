@@ -19,6 +19,9 @@ the runtime stays generic over the event noun.
 
 Machines communicate through rkyv archives. `triad-runtime` does not own NOTA
 parsing; text projection stays at CLI and human-facing edges.
+The default `TraceLog::record` path is silent on delivery failure; callers
+that need proof use the fallible `record_result` method. Trace transport should
+not create runtime string fallback logs before the client display boundary.
 
 Backpressure and deeper runtime-control machinery are deferred future runtime
 work. The current production slice is trace substrate extraction only.
