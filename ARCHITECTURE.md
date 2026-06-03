@@ -6,6 +6,12 @@
 daemons. It owns generic mechanics around Signal/Nexus/SEMA interfaces while
 each component crate owns its generated schema nouns and domain algorithms.
 
+The readability rule is the boundary rule: schema names the interface;
+generated Rust names the objects and traits; handwritten component code should
+mostly match typed input, decide, call the next typed interface, and return
+typed output. `triad-runtime` supports that path without becoming the owner of
+component-specific meaning.
+
 ## Trace Runtime
 
 The current library surface is `trace`.

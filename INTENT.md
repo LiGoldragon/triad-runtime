@@ -3,6 +3,9 @@
 `triad-runtime` holds shared runtime mechanics for schema-derived
 Signal/Nexus/SEMA component daemons.
 
+The triad-engine readability principle is load-bearing here:
+[The triad-engine readability principle: the system should be readable because types name the work, schema names the interface, generated Rust names the objects and traits, and handwritten code is mostly the real algorithm: match typed input, make the decision, call the next typed interface, return typed output.]
+
 The runtime crate is separate from schema emission. `schema-rust-next` emits
 component-specific nouns and traits; `triad-runtime` provides reusable runtime
 objects those generated surfaces can use at run time.

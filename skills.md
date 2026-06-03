@@ -1,5 +1,10 @@
 # Skills — triad-runtime
 
+Read `ESSENCE.md` first. This crate's local essence is the
+triad-engine readability rule: schema names the interface, generated Rust
+names the objects and traits, and handwritten code stays focused on typed
+algorithm and forwarding work.
+
 Read the workspace Rust skills before editing this crate:
 
 - `skills/rust-discipline.md`
