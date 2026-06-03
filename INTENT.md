@@ -10,6 +10,10 @@ objects those generated surfaces can use at run time.
 The first live scope is trace transport. Component crates own their generated
 trace event type and actor hook logic. `triad-runtime` owns the event log,
 length-prefixed binary frame mechanics, and Unix trace socket listener.
+Client-side trace collection also belongs to this shared runtime surface: a
+component CLI should instantiate a generic typed trace client and render events
+only at the user-facing display edge, rather than hand-writing trace listener
+logic per component.
 
 Machines communicate through rkyv archives. `triad-runtime` does not own NOTA
 parsing; text projection stays at CLI and human-facing edges.

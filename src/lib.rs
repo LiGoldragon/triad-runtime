@@ -10,5 +10,6 @@
 pub mod trace;
 
 pub use trace::{
-    TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener, TraceSocketPath,
+    TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
+    TraceSocketPath,
 };

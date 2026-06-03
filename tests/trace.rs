@@ -1,8 +1,10 @@
-use std::{os::unix::net::UnixStream, time::Duration};
+use std::{fmt, os::unix::net::UnixStream, time::Duration};
 
 use rkyv::{Archive, Deserialize, Serialize};
 use tempfile::TempDir;
-use triad_runtime::{TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener};
+use triad_runtime::{
+    TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
+};
 
 #[derive(Archive, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 struct ExampleTraceEvent {
@@ -12,6 +14,12 @@ struct ExampleTraceEvent {
 impl ExampleTraceEvent {
     fn new(name: impl Into<String>) -> Self {
         Self { name: name.into() }
+    }
+}
+
+impl fmt::Display for ExampleTraceEvent {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}", self.name)
     }
 }
 
@@ -138,5 +146,36 @@ fn socket_listener_collect_until_count_returns_partial_on_timeout() {
             .collect_until_count(2, Duration::from_millis(20))
             .expect("collect until timeout"),
         vec![ExampleTraceEvent::new("SignalTriaged")]
+    );
+}
+
+#[test]
+fn trace_client_disabled_collects_no_events() {
+    let client = TraceClient::<ExampleTraceEvent>::disabled();
+
+    assert!(client.events().expect("disabled client events").is_empty());
+}
+
+#[test]
+fn trace_client_prints_typed_events_at_display_boundary() {
+    let directory = TempDir::new().expect("tempdir");
+    let socket_path = directory.path().join("trace.sock");
+    let client = TraceClient::<ExampleTraceEvent>::listen(&socket_path, Duration::from_millis(100))
+        .expect("trace client");
+    let log = TraceLog::socket(&socket_path);
+    let mut output = Vec::new();
+
+    log.record_result(ExampleTraceEvent::new("SignalTriaged"))
+        .expect("write first trace event");
+    log.record_result(ExampleTraceEvent::new("NexusEntered"))
+        .expect("write second trace event");
+
+    client
+        .print_events(&mut output)
+        .expect("print trace events");
+
+    assert_eq!(
+        String::from_utf8(output).expect("trace output is UTF-8"),
+        "SignalTriaged\nNexusEntered\n"
     );
 }

@@ -1,4 +1,6 @@
 use std::{
+    env,
+    fmt::Display,
     io::{Read, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
@@ -59,10 +61,24 @@ where
     events: std::marker::PhantomData<Event>,
 }
 
+pub struct TraceClient<Event>
+where
+    Event: TraceEventFrame,
+{
+    listener: Option<TraceSocketListener<Event>>,
+    collect_duration: Duration,
+}
+
 #[derive(Debug, Error)]
 pub enum TraceError {
     #[error("trace IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("trace environment variable {variable} is invalid: {source}")]
+    Environment {
+        variable: String,
+        source: env::VarError,
+    },
 
     #[error("failed to encode trace event")]
     ArchiveEncode,
@@ -249,6 +265,59 @@ where
                 thread::sleep(Duration::from_millis(5));
             }
             Err(error) => return Err(TraceError::Io(error)),
+        }
+        Ok(())
+    }
+}
+
+impl<Event> TraceClient<Event>
+where
+    Event: TraceEventFrame,
+{
+    pub fn disabled() -> Self {
+        Self {
+            listener: None,
+            collect_duration: Duration::from_millis(200),
+        }
+    }
+
+    pub fn listen(
+        path: impl Into<PathBuf>,
+        collect_duration: Duration,
+    ) -> Result<Self, TraceError> {
+        Ok(Self {
+            listener: Some(TraceSocketListener::bind(path)?),
+            collect_duration,
+        })
+    }
+
+    pub fn from_environment(
+        variable: impl Into<String>,
+        collect_duration: Duration,
+    ) -> Result<Self, TraceError> {
+        let variable = variable.into();
+        match env::var(&variable) {
+            Ok(path) => Self::listen(path, collect_duration),
+            Err(env::VarError::NotPresent) => Ok(Self::disabled()),
+            Err(source) => Err(TraceError::Environment { variable, source }),
+        }
+    }
+
+    pub fn events(&self) -> Result<Vec<Event>, TraceError> {
+        match &self.listener {
+            Some(listener) => listener.collect_for(self.collect_duration),
+            None => Ok(Vec::new()),
+        }
+    }
+}
+
+impl<Event> TraceClient<Event>
+where
+    Event: TraceEventFrame + Display,
+{
+    pub fn print_events(&self, writer: &mut impl Write) -> Result<(), TraceError> {
+        for event in self.events()? {
+            writeln!(writer, "{event}")?;
         }
         Ok(())
     }
