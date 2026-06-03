@@ -13,7 +13,9 @@ length-prefixed binary frame mechanics, and Unix trace socket listener.
 Client-side trace collection also belongs to this shared runtime surface: a
 component CLI should instantiate a generic typed trace client and render events
 only at the user-facing display edge, rather than hand-writing trace listener
-logic per component.
+logic per component. The component's generated trace type decides the display
+surface; text clients should normally render the generated NOTA value, while
+the runtime stays generic over the event noun.
 
 Machines communicate through rkyv archives. `triad-runtime` does not own NOTA
 parsing; text projection stays at CLI and human-facing edges.

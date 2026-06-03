@@ -35,7 +35,9 @@ event count arrives before a timeout.
 when no trace socket is configured, or it binds a `TraceSocketListener` and
 collects typed `Event` values from the daemon. It only renders events through
 `Display` at `print_events`, so trace data stays typed until the client/user
-boundary.
+boundary. The component supplies that `Display` implementation; a NOTA-enabled
+client can render the generated NOTA event without `triad-runtime` depending on
+NOTA.
 
 ## Boundaries
 
