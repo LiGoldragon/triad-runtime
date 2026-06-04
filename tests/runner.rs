@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use triad_runtime::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
 };
@@ -38,7 +40,7 @@ struct TestEffect {
 
 #[derive(Debug, Default)]
 struct TestEngines {
-    actions: Vec<&'static str>,
+    actions: RefCell<Vec<&'static str>>,
 }
 
 impl TestSemaWrite {
@@ -60,12 +62,16 @@ impl TestEffect {
 }
 
 impl TestEngines {
-    fn actions(&self) -> &[&'static str] {
-        &self.actions
+    fn cloned_actions(&self) -> Vec<&'static str> {
+        self.actions.borrow().clone()
     }
 
     fn push_action(&mut self, action: &'static str) {
-        self.actions.push(action);
+        self.actions.borrow_mut().push(action);
+    }
+
+    fn push_shared_action(&self, action: &'static str) {
+        self.actions.borrow_mut().push(action);
     }
 }
 
@@ -97,8 +103,8 @@ impl RunnerEngines for TestEngines {
         TestWork::AfterWrite
     }
 
-    fn observe_sema_read(&mut self, read: Self::SemaRead) -> Self::Work {
-        self.push_action(read.label);
+    fn observe_sema_read(&self, read: Self::SemaRead) -> Self::Work {
+        self.push_shared_action(read.label);
         TestWork::AfterRead
     }
 
@@ -107,8 +113,8 @@ impl RunnerEngines for TestEngines {
         TestWork::AfterEffect
     }
 
-    fn budget_exhausted_reply(&mut self, exhausted: ContinuationExhausted) -> Self::Reply {
-        self.push_action("exhausted");
+    fn budget_exhausted_reply(&self, exhausted: ContinuationExhausted) -> Self::Reply {
+        self.push_shared_action("exhausted");
         TestReply::Exhausted(exhausted)
     }
 }
@@ -121,7 +127,7 @@ fn runner_returns_direct_reply_without_spending_budget() {
     let reply = runner.drive(&mut engines, TestWork::ReplyNow);
 
     assert_eq!(reply, TestReply::Done);
-    assert!(engines.actions().is_empty());
+    assert!(engines.cloned_actions().is_empty());
 }
 
 #[test]
@@ -132,7 +138,7 @@ fn runner_drives_all_non_reply_paths_until_reply() {
     let reply = runner.drive(&mut engines, TestWork::Write);
 
     assert_eq!(reply, TestReply::Done);
-    assert_eq!(engines.actions(), &["write", "read", "effect"]);
+    assert_eq!(engines.cloned_actions(), ["write", "read", "effect"]);
 }
 
 #[test]
@@ -149,9 +155,9 @@ fn runner_accepts_each_non_reply_entry_shape() {
     assert_eq!(read_reply, TestReply::Done);
     assert_eq!(effect_reply, TestReply::Done);
     assert_eq!(continue_reply, TestReply::Done);
-    assert_eq!(read_engines.actions(), &["read", "effect"]);
-    assert_eq!(effect_engines.actions(), &["effect"]);
-    assert!(continue_engines.actions().is_empty());
+    assert_eq!(read_engines.cloned_actions(), ["read", "effect"]);
+    assert_eq!(effect_engines.cloned_actions(), ["effect"]);
+    assert!(continue_engines.cloned_actions().is_empty());
 }
 
 #[test]
@@ -167,7 +173,7 @@ fn runner_stops_before_dispatching_action_past_budget() {
     assert_eq!(exhausted.limit(), ContinuationLimit::new(2));
     assert_eq!(exhausted.completed_step_count(), 2);
     assert_eq!(exhausted.attempted_step_count(), 3);
-    assert_eq!(engines.actions(), &["write", "read", "exhausted"]);
+    assert_eq!(engines.cloned_actions(), ["write", "read", "exhausted"]);
 }
 
 #[test]
@@ -183,7 +189,7 @@ fn runner_exhausts_continue_loop_without_plane_dispatch() {
     assert_eq!(exhausted.limit(), ContinuationLimit::new(2));
     assert_eq!(exhausted.completed_step_count(), 2);
     assert_eq!(exhausted.attempted_step_count(), 3);
-    assert_eq!(engines.actions(), &["exhausted"]);
+    assert_eq!(engines.cloned_actions(), ["exhausted"]);
 }
 
 #[test]

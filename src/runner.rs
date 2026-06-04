@@ -40,11 +40,11 @@ pub trait RunnerEngines {
 
     fn apply_sema_write(&mut self, write: Self::SemaWrite) -> Self::Work;
 
-    fn observe_sema_read(&mut self, read: Self::SemaRead) -> Self::Work;
+    fn observe_sema_read(&self, read: Self::SemaRead) -> Self::Work;
 
     fn run_effect(&mut self, effect: Self::Effect) -> Self::Work;
 
-    fn budget_exhausted_reply(&mut self, exhausted: ContinuationExhausted) -> Self::Reply;
+    fn budget_exhausted_reply(&self, exhausted: ContinuationExhausted) -> Self::Reply;
 }
 
 pub type RunnerNextStep<Engines> = NextStep<

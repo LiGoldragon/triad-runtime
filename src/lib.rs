@@ -18,7 +18,6 @@ pub use argument::{
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
 pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
-    RunnerNextStep,
 };
 pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
