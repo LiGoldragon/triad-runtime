@@ -12,6 +12,34 @@ mostly match typed input, decide, call the next typed interface, and return
 typed output. `triad-runtime` supports that path without becoming the owner of
 component-specific meaning.
 
+## Frame Runtime
+
+`LengthPrefixedCodec` owns the generic binary envelope used by runtime
+transports: a four-byte big-endian body length followed by exactly that many
+payload bytes. `FrameBody` is intentionally just bytes. The codec does not
+know about schema roots, trace events, signal frames, NOTA, or rkyv archive
+layout; those belong to the caller.
+
+This replaces the old pattern where trace transport, signal transport, and
+schema-emitted frame tests each hand-rolled the same prefix logic. Components
+configure a maximum body length by constructing `MaximumFrameLength`; the
+default accepts the full `u32` prefix range.
+
+## Argument Runtime
+
+`ComponentCommand` owns the process-edge single-argument rule. It accepts an
+argv slice, verifies exactly one component argument, and classifies it as a
+`ComponentArgument`:
+
+- `InlineNota` — inline text for a CLI/user edge;
+- `NotaFile` — an existing path read as NOTA text by the component;
+- `SignalFile` — an existing path read as a signal-encoded binary by a
+  daemon or batch edge.
+
+The runtime deliberately does not parse NOTA. It removes duplicated argument
+counting and path/text classification while leaving schema-specific parsing
+to each component crate.
+
 ## Trace Runtime
 
 The current library surface is `trace`.
@@ -31,10 +59,11 @@ observability, not the runtime contract, and the default path does not print
 string fallback logs from the runtime. `TraceLog::record_result` exposes the
 fallible path for tests and callers that need to assert socket delivery.
 
-`TraceFrame<Event>` owns the length-prefixed frame mechanics. It writes a
-four-byte big-endian archive length followed by the component-provided rkyv
-archive bytes. `TraceSocketListener<Event>` binds a Unix socket, receives
-those frames, decodes them through `TraceEventFrame`, and returns typed events.
+`TraceFrame<Event>` owns the typed trace envelope and delegates the reusable
+length-prefix mechanics to `LengthPrefixedCodec`. It writes a four-byte
+big-endian archive length followed by the component-provided rkyv archive
+bytes. `TraceSocketListener<Event>` binds a Unix socket, receives those
+frames, decodes them through `TraceEventFrame`, and returns typed events.
 Tests can either collect for a fixed time window or collect until an expected
 event count arrives before a timeout.
 
@@ -60,7 +89,11 @@ runtime-control machinery stay out of the current implementation scope.
 ## Code Map
 
 - `src/lib.rs` — crate surface.
+- `src/argument.rs` — component process-edge argument classification.
+- `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
+- `tests/argument.rs` — single-argument and argument-kind witnesses.
+- `tests/frame.rs` — generic length-prefix codec witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
   type.

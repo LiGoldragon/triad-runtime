@@ -1,7 +1,7 @@
 use std::{
     env,
     fmt::Display,
-    io::{Read, Write},
+    io::Write,
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -11,7 +11,7 @@ use std::{
 
 use thiserror::Error;
 
-const LENGTH_PREFIX_BYTE_COUNT: usize = 4;
+use crate::{FrameBody, FrameError, LengthPrefixedCodec};
 
 pub trait TraceEventFrame: Clone + Send + 'static {
     fn to_trace_archive(&self) -> Result<Vec<u8>, TraceError>;
@@ -86,8 +86,8 @@ pub enum TraceError {
     #[error("failed to decode trace event")]
     ArchiveDecode,
 
-    #[error("trace frame is too large: {found} bytes")]
-    FrameTooLarge { found: usize },
+    #[error("trace frame error: {0}")]
+    Frame(#[from] FrameError),
 }
 
 impl<Event> Default for TraceLog<Event>
@@ -117,27 +117,18 @@ where
 
     pub fn to_bytes(&self) -> Result<Vec<u8>, TraceError> {
         let archive = self.event.to_trace_archive()?;
-        let length = u32::try_from(archive.len()).map_err(|_| TraceError::FrameTooLarge {
-            found: archive.len(),
-        })?;
-        let mut frame = Vec::with_capacity(LENGTH_PREFIX_BYTE_COUNT + archive.len());
-        frame.extend_from_slice(&length.to_be_bytes());
-        frame.extend_from_slice(&archive);
-        Ok(frame)
+        Ok(LengthPrefixedCodec::default().encode_body(&FrameBody::new(archive))?)
     }
 
     pub fn write_to(&self, stream: &mut UnixStream) -> Result<(), TraceError> {
-        stream.write_all(&self.to_bytes()?)?;
+        let archive = self.event.to_trace_archive()?;
+        LengthPrefixedCodec::default().write_body(stream, &FrameBody::new(archive))?;
         Ok(())
     }
 
     pub fn read_from(stream: &mut UnixStream) -> Result<Self, TraceError> {
-        let mut length_bytes = [0_u8; LENGTH_PREFIX_BYTE_COUNT];
-        stream.read_exact(&mut length_bytes)?;
-        let length = u32::from_be_bytes(length_bytes) as usize;
-        let mut archive = vec![0_u8; length];
-        stream.read_exact(&mut archive)?;
-        let event = Event::from_trace_archive(&archive)?;
+        let body = LengthPrefixedCodec::default().read_body(stream)?;
+        let event = Event::from_trace_archive(body.bytes())?;
         Ok(Self::new(event))
     }
 }

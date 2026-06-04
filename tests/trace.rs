@@ -11,9 +11,20 @@ struct ExampleTraceEvent {
     name: String,
 }
 
+#[derive(Archive, Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+struct CounterTraceEvent {
+    count: u32,
+}
+
 impl ExampleTraceEvent {
     fn new(name: impl Into<String>) -> Self {
         Self { name: name.into() }
+    }
+}
+
+impl CounterTraceEvent {
+    fn new(count: u32) -> Self {
+        Self { count }
     }
 }
 
@@ -24,6 +35,19 @@ impl fmt::Display for ExampleTraceEvent {
 }
 
 impl TraceEventFrame for ExampleTraceEvent {
+    fn to_trace_archive(&self) -> Result<Vec<u8>, TraceError> {
+        rkyv::to_bytes::<rkyv::rancor::Error>(self)
+            .map(|archive| archive.to_vec())
+            .map_err(|_| TraceError::ArchiveEncode)
+    }
+
+    fn from_trace_archive(archive: &[u8]) -> Result<Self, TraceError> {
+        rkyv::from_bytes::<Self, rkyv::rancor::Error>(archive)
+            .map_err(|_| TraceError::ArchiveDecode)
+    }
+}
+
+impl TraceEventFrame for CounterTraceEvent {
     fn to_trace_archive(&self) -> Result<Vec<u8>, TraceError> {
         rkyv::to_bytes::<rkyv::rancor::Error>(self)
             .map(|archive| archive.to_vec())
@@ -88,6 +112,40 @@ fn trace_frame_writes_length_prefixed_binary_archive() {
     let decoded = TraceFrame::<ExampleTraceEvent>::read_from(&mut reader)
         .expect("read trace frame")
         .into_event();
+    assert_eq!(decoded, event);
+}
+
+#[test]
+fn trace_frame_is_length_prefixed_binary_not_display_text() {
+    let event = ExampleTraceEvent::new("SemaWriteApplied");
+    let frame = TraceFrame::new(event.clone())
+        .to_bytes()
+        .expect("frame bytes");
+    let archive_length = u32::from_be_bytes(frame[..4].try_into().expect("length prefix")) as usize;
+
+    assert_eq!(
+        archive_length,
+        frame.len() - 4,
+        "the frame is a four-byte length prefix followed by that many archive bytes"
+    );
+    assert_ne!(
+        &frame[4..],
+        event.to_string().as_bytes(),
+        "the wire carries the rkyv archive, not the Display text"
+    );
+
+    let decoded = ExampleTraceEvent::from_trace_archive(&frame[4..]).expect("decode archive");
+    assert_eq!(decoded, event);
+}
+
+#[test]
+fn trace_runtime_is_generic_over_distinct_event_shapes() {
+    let event = CounterTraceEvent::new(4);
+    let frame = TraceFrame::new(event.clone())
+        .to_bytes()
+        .expect("frame bytes");
+    let decoded = CounterTraceEvent::from_trace_archive(&frame[4..]).expect("decode archive");
+
     assert_eq!(decoded, event);
 }
 

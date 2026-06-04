@@ -7,8 +7,14 @@
 
 #![forbid(unsafe_code)]
 
+pub mod argument;
+pub mod frame;
 pub mod trace;
 
+pub use argument::{
+    ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
+};
+pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
 pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
     TraceSocketPath,

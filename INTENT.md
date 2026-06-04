@@ -26,5 +26,16 @@ The default `TraceLog::record` path is silent on delivery failure; callers
 that need proof use the fallible `record_result` method. Trace transport should
 not create runtime string fallback logs before the client display boundary.
 
+Shared runtime byte mechanics live here before each component hand-rolls them:
+`LengthPrefixedCodec` owns the four-byte big-endian length-prefix envelope
+used by trace and signal transports. The payload remains caller-owned binary
+data; the codec never interprets schema, NOTA, or rkyv.
+
+Component binaries share the same single-argument rule through
+`ComponentCommand` and `ComponentArgument`. The runtime enforces the exact-one
+argument shape and classifies the edge as inline NOTA text, NOTA file, or
+signal-encoded file; component crates still parse the schema-specific value.
+
 Backpressure and deeper runtime-control machinery are deferred future runtime
-work. The current production slice is trace substrate extraction only.
+work. The current production slice is trace substrate plus reusable frame and
+argument edges.
