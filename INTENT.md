@@ -36,6 +36,16 @@ Component binaries share the same single-argument rule through
 argument shape and classifies the edge as inline NOTA text, NOTA file, or
 signal-encoded file; component crates still parse the schema-specific value.
 
+The recursive Nexus runner is runtime-owned. Component code should not repeat a
+hand-written action loop that applies storage, observes storage, runs effects,
+continues, and checks a local budget. `Runner` owns that loop and the typed
+continuation budget; generated glue projects each component's typed
+`NexusAction` into the fixed `NextStep` shape. Component authors implement the
+three plane engines, the effect handler, and the budget-exhausted reply. The
+adapter that bundles those methods for `RunnerEngines` is generated.
+
 Backpressure and deeper runtime-control machinery are deferred future runtime
-work. The current production slice is trace substrate plus reusable frame and
-argument edges.
+work. Multi-listener/meta-signal handoff and deployment concurrency are not
+part of the current runner slice; concurrency is a runtime/deployment concern,
+not public contract vocabulary. The current production slice is trace
+substrate plus reusable frame, argument, and runner edges.

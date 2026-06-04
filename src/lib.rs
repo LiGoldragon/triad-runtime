@@ -9,12 +9,17 @@
 
 pub mod argument;
 pub mod frame;
+pub mod runner;
 pub mod trace;
 
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
+pub use runner::{
+    ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
+    RunnerNextStep,
+};
 pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
     TraceSocketPath,

@@ -40,9 +40,35 @@ The runtime deliberately does not parse NOTA. It removes duplicated argument
 counting and path/text classification while leaving schema-specific parsing
 to each component crate.
 
-## Trace Runtime
+## Runner Runtime
 
-The current library surface is `trace`.
+`Runner` owns the shared recursive Nexus loop. Component code does not
+hand-write the cycle from a Nexus action into SEMA writes, SEMA reads, effects,
+or another Nexus work item. Instead, generated glue projects the component's
+typed action enum into `NextStep`, and `Runner::drive` dispatches the fixed
+five-outcome shape:
+
+- `Reply` exits to Signal;
+- `SemaWrite` applies storage and re-enters with write completion;
+- `SemaRead` observes storage and re-enters with read completion;
+- `RunEffect` performs a component effect and re-enters with effect
+  completion;
+- `Continue` re-enters Nexus directly.
+
+`RunnerEngines` is the adapter surface between generated/component code and
+the library loop. It is deliberately typed over each component's generated
+payloads; the runtime does not erase plane identity or invent component
+meaning. The adapter is generated glue, not an author-written fourth engine.
+Component authors still implement the real Signal, Nexus, and SEMA behavior
+plus the effect handler and budget-exhausted reply.
+
+`ContinuationLimit`, `ContinuationBudget`, and `ContinuationExhausted` make the
+recursion limit typed and testable. A final `Reply` is always allowed, but once
+the limit is exhausted the runner refuses to dispatch another storage,
+effect, or continuation step and asks the component for a typed error reply.
+The default limit is 32 non-reply steps.
+
+## Trace Runtime
 
 `TraceEventFrame` is the component boundary. A component's generated
 `TraceEvent` implements the trait by archiving itself with rkyv. The runtime
@@ -83,17 +109,21 @@ decide component behavior.
 
 Future extraction waves may add generic daemon command scaffolding, signal
 transport, and trace-aware test harnesses. Those move here only when a second
-component would otherwise copy the same mechanics. Backpressure and deeper
-runtime-control machinery stay out of the current implementation scope.
+component would otherwise copy the same mechanics. Backpressure, multi-listener
+handoff, and deeper runtime-control machinery stay out of the current
+implementation scope.
 
 ## Code Map
 
 - `src/lib.rs` — crate surface.
 - `src/argument.rs` — component process-edge argument classification.
 - `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
+- `src/runner.rs` — generic recursive Nexus runner and typed continuation
+  budget.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
 - `tests/argument.rs` — single-argument and argument-kind witnesses.
 - `tests/frame.rs` — generic length-prefix codec witnesses.
+- `tests/runner.rs` — shared runner loop and budget witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
   type.
