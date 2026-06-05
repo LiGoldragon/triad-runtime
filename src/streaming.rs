@@ -119,6 +119,11 @@ where
         token
     }
 
+    pub fn register_token(&mut self, token: Token, filter: Filter) {
+        self.unregister(token);
+        self.subscriptions.push(Subscription { token, filter });
+    }
+
     pub fn unregister(&mut self, token: Token) -> bool {
         let before = self.subscriptions.len();
         self.subscriptions

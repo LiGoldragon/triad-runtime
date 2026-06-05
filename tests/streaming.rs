@@ -110,6 +110,29 @@ fn subscription_registry_registers_unregisters_and_delivers_matching_events() {
 }
 
 #[test]
+fn subscription_registry_can_register_an_already_minted_token() {
+    let mut registry = SubscriptionRegistry::<TestSubscriptionToken, TestFilter>::new();
+    let token = TestSubscriptionToken(SubscriptionTokenInner::new(88));
+
+    registry.register_token(token, TestFilter::Label("alpha"));
+
+    let mut delivered = Vec::new();
+    registry.publish_matching(&TestEvent::new("alpha"), TestFilter::matches, |token, _event| {
+        delivered.push(token);
+    });
+    assert_eq!(delivered, vec![token]);
+
+    registry.register_token(token, TestFilter::Label("beta"));
+
+    let mut after_replacement = Vec::new();
+    registry.publish_matching(&TestEvent::new("alpha"), TestFilter::matches, |token, _event| {
+        after_replacement.push(token);
+    });
+    assert!(after_replacement.is_empty());
+    assert_eq!(registry.len(), 1);
+}
+
+#[test]
 fn subscription_event_sequence_mints_monotonic_acceptor_identifiers() {
     let mut sequence = SubscriptionEventSequence::acceptor(SessionEpoch::new(7));
 

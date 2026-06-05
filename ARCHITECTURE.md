@@ -123,8 +123,9 @@ wire kernel. `SubscriptionToken` is the bridge trait for generated
 component-local token newtypes. `SubscriptionTokenIssuer` mints monotonically
 increasing `signal_frame::SubscriptionTokenInner` values and wraps them in the
 generated token type. `SubscriptionRegistry<Token, Filter>` stores live
-subscriptions, issues tokens, unregisters tokens, and publishes matching
-events through caller-supplied filter and delivery closures.
+subscriptions, issues tokens, accepts already-minted tokens from a
+schema-declared open-subscription effect, unregisters tokens, and publishes
+matching events through caller-supplied filter and delivery closures.
 
 `SubscriptionEventSequence` owns `signal_frame::StreamEventIdentifier`
 generation for the daemon/acceptor lane. `SubscriptionEventPublisher<Input,
