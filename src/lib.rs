@@ -12,6 +12,7 @@ pub mod daemon;
 pub mod frame;
 pub mod role;
 pub mod runner;
+pub mod streaming;
 pub mod trace;
 
 pub use argument::{
@@ -30,6 +31,10 @@ pub use role::{
 };
 pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
+};
+pub use streaming::{
+    Subscription, SubscriptionEventPublisher, SubscriptionEventSequence, SubscriptionRegistry,
+    SubscriptionToken, SubscriptionTokenIssuer,
 };
 pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,

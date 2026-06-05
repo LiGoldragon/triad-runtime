@@ -116,6 +116,29 @@ parallel scheduler model. A future transport scheduler may sit between the
 listener set and the engine owner, but public contracts still do not declare
 deployment parallelism.
 
+## Streaming Runtime
+
+`streaming.rs` owns reusable subscription mechanics above the `signal-frame`
+wire kernel. `SubscriptionToken` is the bridge trait for generated
+component-local token newtypes. `SubscriptionTokenIssuer` mints monotonically
+increasing `signal_frame::SubscriptionTokenInner` values and wraps them in the
+generated token type. `SubscriptionRegistry<Token, Filter>` stores live
+subscriptions, issues tokens, unregisters tokens, and publishes matching
+events through caller-supplied filter and delivery closures.
+
+`SubscriptionEventSequence` owns `signal_frame::StreamEventIdentifier`
+generation for the daemon/acceptor lane. `SubscriptionEventPublisher<Input,
+Output, Event>` combines that sequence with a short header and produces real
+`signal_frame::StreamingFrame<Input, Output, Event>` values whose body is
+`StreamingFrameBody::SubscriptionEvent`. The publisher is generic over the
+schema-generated request, reply, and event roots; it never knows component
+event variants.
+
+The runtime does not own stream policy. Schema declares which operations open
+streams and which event variants belong to streams; generated code exposes the
+typed frame aliases; component code supplies filter semantics and writes frames
+to the subscriber connection.
+
 ## Trace Runtime
 
 `TraceEventFrame` is the component boundary. A component's generated
@@ -172,6 +195,8 @@ implementation scope.
   budget.
 - `src/role.rs` — reusable role traits implemented by generated component
   roots.
+- `src/streaming.rs` — reusable subscription token registry and typed
+  `signal-frame` subscription-event publisher.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
 - `tests/argument.rs` — single-argument and argument-kind witnesses.
@@ -179,5 +204,7 @@ implementation scope.
 - `tests/daemon.rs` — Unix listener preparation, lifecycle, and request-error
   isolation witnesses.
 - `tests/runner.rs` — shared runner loop and budget witnesses.
+- `tests/streaming.rs` — token issuance, registry filtering, event sequence,
+  and `signal-frame` streaming-frame witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
   type.

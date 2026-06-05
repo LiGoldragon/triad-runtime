@@ -43,6 +43,15 @@ Shared runtime byte mechanics live here before each component hand-rolls them:
 used by trace and signal transports. The payload remains caller-owned binary
 data; the codec never interprets schema, NOTA, or rkyv.
 
+Streaming subscription mechanics are runtime-owned once schema exposes the
+stream. `signal-frame` owns the low-level wire kernel; generated schemas own
+typed `Input`, `Output`, and event payloads; `triad-runtime` owns reusable
+subscription token issuance, live-subscription registries, stream event
+sequence IDs, and publishers that construct real
+`signal_frame::StreamingFrameBody::SubscriptionEvent` frames. Component code
+supplies filter policy and delivery IO; it should not reimplement token
+counters or event-frame construction per daemon.
+
 Component binaries share the same single-argument rule through
 `ComponentCommand` and `ComponentArgument`. The runtime enforces the exact-one
 argument shape and classifies the edge as inline NOTA text, NOTA file, or
@@ -79,7 +88,7 @@ single-writer semantics; components supply the typed ordinary/meta frame
 bridges and the generated Nexus/SEMA behavior.
 
 Backpressure and deeper runtime-control machinery are deferred future runtime
-work. Deployment concurrency and streaming subscription sessions are runtime
-concerns, not public contract vocabulary. The current production slice is trace
-substrate plus reusable frame, argument, runner, single-listener daemon, and
-multi-listener ordinary/meta daemon edges.
+work. Deployment concurrency is a runtime concern, not public contract
+vocabulary. The current production slice is trace substrate plus reusable
+frame, argument, runner, single-listener daemon, multi-listener ordinary/meta
+daemon edges, and typed streaming subscription mechanics.
