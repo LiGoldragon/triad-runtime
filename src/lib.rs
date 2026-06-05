@@ -8,12 +8,17 @@
 #![forbid(unsafe_code)]
 
 pub mod argument;
+pub mod daemon;
 pub mod frame;
 pub mod runner;
 pub mod trace;
 
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
+};
+pub use daemon::{
+    BoundSingleListenerDaemon, DaemonRuntime, ListenerError, RequestErrorLog, SingleListenerDaemon,
+    SingleListenerDaemonError,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
 pub use runner::{

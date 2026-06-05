@@ -68,6 +68,32 @@ the limit is exhausted the runner refuses to dispatch another storage,
 effect, or continuation step and asks the component for a typed error reply.
 The default limit is 32 non-reply steps.
 
+## Daemon Runtime
+
+`SingleListenerDaemon` owns the reusable single-listener daemon shell. It
+prepares the Unix socket path, creates the parent directory, removes any stale
+socket file, binds the listener, starts the component runtime, and then serves
+incoming streams. A request-level error is logged with `RequestErrorLog` and
+does not stop the daemon; listener, startup, and shutdown errors remain fatal.
+
+`DaemonRuntime` is the component boundary. A component implements it on a
+data-bearing runtime object that owns its engine state. The shared daemon
+runner calls:
+
+- `start` before the listener begins serving;
+- `handle_stream` for each accepted Unix stream;
+- `stop` when the accept loop exits.
+
+The runtime crate deliberately does not know about generated Signal roots,
+rkyv archives, NOTA, SEMA tables, trace configuration, or policy meaning. A
+component's `handle_stream` method remains the place where generated
+signal-frame transport meets the component engine.
+
+This is the first production slice, not the final concurrency model.
+Multi-listener/meta-signal handoff will later put listener threads in front of
+one engine-owner loop; the public contract still does not declare deployment
+parallelism.
+
 ## Trace Runtime
 
 `TraceEventFrame` is the component boundary. A component's generated
@@ -118,12 +144,16 @@ implementation scope.
 - `src/lib.rs` — crate surface.
 - `src/argument.rs` — component process-edge argument classification.
 - `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
+- `src/daemon.rs` — reusable single-listener Unix daemon runner and lifecycle
+  trait.
 - `src/runner.rs` — generic recursive Nexus runner and typed continuation
   budget.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
 - `tests/argument.rs` — single-argument and argument-kind witnesses.
 - `tests/frame.rs` — generic length-prefix codec witnesses.
+- `tests/daemon.rs` — Unix listener preparation, lifecycle, and request-error
+  isolation witnesses.
 - `tests/runner.rs` — shared runner loop and budget witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
   type.

@@ -44,8 +44,18 @@ continuation budget; generated glue projects each component's typed
 three plane engines, the effect handler, and the budget-exhausted reply. The
 adapter that bundles those methods for `RunnerEngines` is generated.
 
+The single-listener daemon runner is runtime-owned. Component code should not
+repeat the Unix socket preparation and accept loop that every component daemon
+needs before it reaches its typed Signal/Nexus/SEMA engines. `SingleListenerDaemon`
+owns parent-directory creation, stale socket removal, listener binding,
+request-error isolation, and the start/stop lifecycle calls around a
+data-bearing component runtime. Component crates still own their typed
+configuration object, engine construction, signal-frame transport, and domain
+errors.
+
 Backpressure and deeper runtime-control machinery are deferred future runtime
 work. Multi-listener/meta-signal handoff and deployment concurrency are not
 part of the current runner slice; concurrency is a runtime/deployment concern,
 not public contract vocabulary. The current production slice is trace
-substrate plus reusable frame, argument, and runner edges.
+substrate plus reusable frame, argument, runner, and single-listener daemon
+edges.
