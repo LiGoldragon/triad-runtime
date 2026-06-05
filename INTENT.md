@@ -16,6 +16,11 @@ the runner executes those declared Nexus verbs. (psyche 2026-06-05, record z6qu)
 The runtime crate is separate from schema emission. `schema-rust-next` emits
 component-specific nouns and traits; `triad-runtime` provides reusable runtime
 objects those generated surfaces can use at run time.
+Reusable engine-role names are expressed as runtime traits when concrete
+component variants differ. A component still owns its generated `NexusAction`,
+`NexusWork`, `SemaWriteInput`, and sibling enums, but shared runtime code speaks
+through `triad-runtime` role traits rather than treating one component's enum
+name as the generic concept.
 
 The first live scope is trace transport. Component crates own their generated
 trace event type and actor hook logic. `triad-runtime` owns the event log,
@@ -65,9 +70,16 @@ data-bearing component runtime. Component crates still own their typed
 configuration object, engine construction, signal-frame transport, and domain
 errors.
 
+The multi-listener daemon shell is runtime-owned for ordinary + meta signal
+daemons. `MultiListenerDaemon` binds multiple Unix sockets, applies per-socket
+modes, isolates request errors, and routes accepted streams through one
+data-bearing runtime object with a listener identity. The one runtime owner is
+the current serialization point for generated Nexus execution and SEMA
+single-writer semantics; components supply the typed ordinary/meta frame
+bridges and the generated Nexus/SEMA behavior.
+
 Backpressure and deeper runtime-control machinery are deferred future runtime
-work. Multi-listener/meta-signal handoff and deployment concurrency are not
-part of the current runner slice; concurrency is a runtime/deployment concern,
-not public contract vocabulary. The current production slice is trace
-substrate plus reusable frame, argument, runner, and single-listener daemon
-edges.
+work. Deployment concurrency and streaming subscription sessions are runtime
+concerns, not public contract vocabulary. The current production slice is trace
+substrate plus reusable frame, argument, runner, single-listener daemon, and
+multi-listener ordinary/meta daemon edges.

@@ -1,11 +1,17 @@
 use std::{
+    fmt::{Display, Formatter},
+    fs,
     io::{Read, Write},
+    os::unix::fs::PermissionsExt,
     os::unix::net::UnixStream,
 };
 
 use tempfile::TempDir;
 use thiserror::Error;
-use triad_runtime::{DaemonRuntime, RequestErrorLog, SingleListenerDaemon};
+use triad_runtime::{
+    DaemonRuntime, ListenerPollInterval, ListenerSocket, MultiListenerDaemon, MultiListenerRuntime,
+    RequestErrorLog, SingleListenerDaemon, SocketMode,
+};
 
 #[derive(Debug, Error)]
 enum TestRuntimeError {
@@ -17,6 +23,13 @@ enum TestRuntimeError {
 struct TestRuntime {
     events: Vec<&'static str>,
     fail_next_request: bool,
+    handled_stream_count: u8,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestListener {
+    Ordinary,
+    Meta,
 }
 
 impl TestRuntime {
@@ -27,6 +40,24 @@ impl TestRuntime {
 
     fn events(&self) -> &[&'static str] {
         &self.events
+    }
+}
+
+impl TestListener {
+    fn response_offset(self) -> u8 {
+        match self {
+            Self::Ordinary => 10,
+            Self::Meta => 20,
+        }
+    }
+}
+
+impl Display for TestListener {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ordinary => formatter.write_str("ordinary"),
+            Self::Meta => formatter.write_str("meta"),
+        }
     }
 }
 
@@ -57,6 +88,74 @@ impl DaemonRuntime for TestRuntime {
             .write_all(&[byte[0].saturating_add(1)])
             .expect("write response byte");
         Ok(())
+    }
+}
+
+impl MultiListenerRuntime for TestRuntime {
+    type Listener = TestListener;
+    type RequestError = TestRuntimeError;
+    type StartError = TestRuntimeError;
+    type StopError = TestRuntimeError;
+
+    fn start(&mut self) -> Result<(), Self::StartError> {
+        self.events.push("start");
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), Self::StopError> {
+        self.events.push("stop");
+        Ok(())
+    }
+
+    fn handle_stream(
+        &mut self,
+        listener: Self::Listener,
+        mut stream: UnixStream,
+    ) -> Result<(), Self::RequestError> {
+        self.events.push(match listener {
+            TestListener::Ordinary => "ordinary",
+            TestListener::Meta => "meta",
+        });
+        if self.fail_next_request {
+            self.fail_next_request = false;
+            return Err(TestRuntimeError::RequestFailed);
+        }
+        self.handled_stream_count = self.handled_stream_count.saturating_add(1);
+        let mut byte = [0_u8; 1];
+        stream.read_exact(&mut byte).expect("read request byte");
+        let response = byte[0]
+            .saturating_add(listener.response_offset())
+            .saturating_add(self.handled_stream_count);
+        stream.write_all(&[response]).expect("write response byte");
+        Ok(())
+    }
+}
+
+struct TestClient {
+    socket_path: std::path::PathBuf,
+    request_byte: u8,
+}
+
+impl TestClient {
+    fn new(socket_path: impl Into<std::path::PathBuf>, request_byte: u8) -> Self {
+        Self {
+            socket_path: socket_path.into(),
+            request_byte,
+        }
+    }
+
+    fn spawn(self) -> std::thread::JoinHandle<[u8; 1]> {
+        std::thread::spawn(move || self.run())
+    }
+
+    fn run(self) -> [u8; 1] {
+        let mut stream = UnixStream::connect(self.socket_path).expect("connect client");
+        stream
+            .write_all(&[self.request_byte])
+            .expect("write request");
+        let mut response = [0_u8; 1];
+        stream.read_exact(&mut response).expect("read response");
+        response
     }
 }
 
@@ -120,4 +219,78 @@ fn request_errors_are_logged_without_stopping_the_listener() {
 
     assert_eq!(successful_client.join().expect("client completes"), [10]);
     assert_eq!(daemon.runtime().events(), ["handle", "handle"]);
+}
+
+#[test]
+fn multi_listener_daemon_routes_two_sockets_through_one_runtime_owner() {
+    let directory = TempDir::new().expect("tempdir");
+    let ordinary_socket_path = directory.path().join("ordinary.sock");
+    let meta_socket_path = directory.path().join("meta.sock");
+    let runtime = TestRuntime::default();
+    let listener_sockets = [
+        ListenerSocket::new(TestListener::Ordinary, &ordinary_socket_path),
+        ListenerSocket::new(TestListener::Meta, &meta_socket_path),
+    ];
+    let mut daemon = MultiListenerDaemon::new(
+        listener_sockets,
+        runtime,
+        RequestErrorLog::new("test-daemon"),
+    )
+    .with_listener_poll_interval(ListenerPollInterval::from_millis(1))
+    .bind()
+    .expect("bind listeners");
+    daemon.start().expect("start runtime");
+
+    let ordinary_client = TestClient::new(&ordinary_socket_path, 1).spawn();
+    daemon
+        .serve_next_stream()
+        .expect("serve ordinary stream through shared runtime");
+
+    let meta_client = TestClient::new(&meta_socket_path, 1).spawn();
+    daemon
+        .serve_next_stream()
+        .expect("serve meta stream through shared runtime");
+    daemon.stop().expect("stop runtime");
+
+    assert_eq!(ordinary_client.join().expect("ordinary completes"), [12]);
+    assert_eq!(meta_client.join().expect("meta completes"), [23]);
+    assert_eq!(
+        daemon.runtime().events(),
+        ["start", "ordinary", "meta", "stop"]
+    );
+}
+
+#[test]
+fn multi_listener_socket_modes_are_applied_per_socket() {
+    let directory = TempDir::new().expect("tempdir");
+    let ordinary_socket_path = directory.path().join("ordinary.sock");
+    let meta_socket_path = directory.path().join("meta.sock");
+    let listener_sockets = [
+        ListenerSocket::new(TestListener::Ordinary, &ordinary_socket_path)
+            .with_socket_mode(SocketMode::new(0o600)),
+        ListenerSocket::new(TestListener::Meta, &meta_socket_path)
+            .with_socket_mode(SocketMode::new(0o660)),
+    ];
+
+    let _daemon = MultiListenerDaemon::new(
+        listener_sockets,
+        TestRuntime::default(),
+        RequestErrorLog::new("test-daemon"),
+    )
+    .bind()
+    .expect("bind listeners");
+
+    let ordinary_mode = fs::metadata(&ordinary_socket_path)
+        .expect("ordinary metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    let meta_mode = fs::metadata(&meta_socket_path)
+        .expect("meta metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(ordinary_mode, 0o600);
+    assert_eq!(meta_mode, 0o660);
 }

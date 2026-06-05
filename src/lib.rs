@@ -18,8 +18,10 @@ pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
 };
 pub use daemon::{
-    BoundSingleListenerDaemon, DaemonRuntime, ListenerError, RequestErrorLog, SingleListenerDaemon,
-    SingleListenerDaemonError,
+    BoundMultiListenerDaemon, BoundSingleListenerDaemon, DaemonRuntime, ListenerError,
+    ListenerPollInterval, ListenerSocket, MultiListenerDaemon, MultiListenerDaemonError,
+    MultiListenerRuntime, RequestErrorLog, SingleListenerDaemon, SingleListenerDaemonError,
+    SocketMode,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
 pub use role::{

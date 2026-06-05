@@ -75,6 +75,12 @@ the limit is exhausted the runner refuses to dispatch another storage,
 effect, or continuation step and asks the component for a typed error reply.
 The default limit is 32 non-reply steps.
 
+`role.rs` names the reusable engine roles as traits. Generated component roots
+such as `NexusWork`, `CommandSemaWrite`, `CommandSemaRead`, and
+`CommandEffect` implement `NexusWork`, `SemaWriteInput`, `SemaReadInput`, and
+`NexusEffectCommand` respectively. The concrete enum variants remain
+component-specific; the reusable name is the trait/interface the runtime sees.
+
 ## Daemon Runtime
 
 `SingleListenerDaemon` owns the reusable single-listener daemon shell. It
@@ -96,10 +102,19 @@ rkyv archives, NOTA, SEMA tables, trace configuration, or policy meaning. A
 component's `handle_stream` method remains the place where generated
 signal-frame transport meets the component engine.
 
-This is the first production slice, not the final concurrency model.
-Multi-listener/meta-signal handoff will later put listener threads in front of
-one engine-owner loop; the public contract still does not declare deployment
-parallelism.
+`MultiListenerDaemon` is the ordinary/meta daemon shell. It binds a list of
+`ListenerSocket<Listener>` values, applies each socket's optional `SocketMode`,
+sets listeners nonblocking, and passes accepted streams to one
+`MultiListenerRuntime` object together with the listener identity. This keeps
+the current engine-owner shape serial: two sockets do not imply two mutable
+Nexus engines or a broad mutex around SEMA. Components still own their typed
+ordinary/meta frame adapters; the runtime owns socket preparation, request-error
+isolation, and lifecycle order.
+
+This is the current production listener model, not the final streaming or
+parallel scheduler model. A future transport scheduler may sit between the
+listener set and the engine owner, but public contracts still do not declare
+deployment parallelism.
 
 ## Trace Runtime
 
@@ -152,9 +167,11 @@ implementation scope.
 - `src/argument.rs` — component process-edge argument classification.
 - `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
 - `src/daemon.rs` — reusable single-listener Unix daemon runner and lifecycle
-  trait.
+  trait, plus multi-listener ordinary/meta daemon shell.
 - `src/runner.rs` — generic recursive Nexus runner and typed continuation
   budget.
+- `src/role.rs` — reusable role traits implemented by generated component
+  roots.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
 - `tests/argument.rs` — single-argument and argument-kind witnesses.
