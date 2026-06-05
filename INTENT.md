@@ -6,6 +6,13 @@ Signal/Nexus/SEMA component daemons.
 The triad-engine readability principle is load-bearing here:
 [The triad-engine readability principle: the system should be readable because types name the work, schema names the interface, generated Rust names the objects and traits, and handwritten code is mostly the real algorithm: match typed input, make the decision, call the next typed interface, return typed output.]
 
+The nexus schema is the engine's FEATURE CATALOG. Every internal feature —
+any computation, any filtering or condition on results, any conditional
+write — is declared as a Nexus verb + object in the schema, never as inline
+hidden logic, so the engine's complete internal-feature surface is visible in
+one place. Feature visibility is the main reason the Nexus interface exists;
+the runner executes those declared Nexus verbs. (psyche 2026-06-05, record z6qu)
+
 The runtime crate is separate from schema emission. `schema-rust-next` emits
 component-specific nouns and traits; `triad-runtime` provides reusable runtime
 objects those generated surfaces can use at run time.
