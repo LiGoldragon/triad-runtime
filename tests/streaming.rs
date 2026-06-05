@@ -117,17 +117,25 @@ fn subscription_registry_can_register_an_already_minted_token() {
     registry.register_token(token, TestFilter::Label("alpha"));
 
     let mut delivered = Vec::new();
-    registry.publish_matching(&TestEvent::new("alpha"), TestFilter::matches, |token, _event| {
-        delivered.push(token);
-    });
+    registry.publish_matching(
+        &TestEvent::new("alpha"),
+        TestFilter::matches,
+        |token, _event| {
+            delivered.push(token);
+        },
+    );
     assert_eq!(delivered, vec![token]);
 
     registry.register_token(token, TestFilter::Label("beta"));
 
     let mut after_replacement = Vec::new();
-    registry.publish_matching(&TestEvent::new("alpha"), TestFilter::matches, |token, _event| {
-        after_replacement.push(token);
-    });
+    registry.publish_matching(
+        &TestEvent::new("alpha"),
+        TestFilter::matches,
+        |token, _event| {
+            after_replacement.push(token);
+        },
+    );
     assert!(after_replacement.is_empty());
     assert_eq!(registry.len(), 1);
 }

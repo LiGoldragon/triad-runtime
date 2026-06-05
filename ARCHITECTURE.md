@@ -111,6 +111,13 @@ Nexus engines or a broad mutex around SEMA. Components still own their typed
 ordinary/meta frame adapters; the runtime owns socket preparation, request-error
 isolation, and lifecycle order.
 
+`MultiListenerRuntime::should_continue` is the stop boundary for supervised
+components. The default keeps serving forever; a component runtime that owns a
+supervision or shutdown signal can return false, causing the shared stream loop
+to exit cleanly before `stop` is called. This keeps graceful shutdown in the
+shared daemon shell instead of forcing every supervised component to fork its
+own polling loop.
+
 This is the current production listener model, not the final streaming or
 parallel scheduler model. A future transport scheduler may sit between the
 listener set and the engine owner, but public contracts still do not declare

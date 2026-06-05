@@ -29,6 +29,10 @@ pub trait MultiListenerRuntime {
     type StopError;
     type RequestError: Display;
 
+    fn should_continue(&self) -> bool {
+        true
+    }
+
     fn start(&mut self) -> Result<(), Self::StartError>;
 
     fn stop(&mut self) -> Result<(), Self::StopError>;
@@ -365,18 +369,20 @@ where
     }
 
     pub fn serve_next_stream(&mut self) -> Result<(), ListenerError> {
-        loop {
+        while self.runtime.should_continue() {
             if self.try_serve_next_stream()? {
                 return Ok(());
             }
             thread::sleep(self.listener_poll_interval.duration());
         }
+        Ok(())
     }
 
     pub fn serve_streams(&mut self) -> Result<(), ListenerError> {
-        loop {
+        while self.runtime.should_continue() {
             self.serve_next_stream()?;
         }
+        Ok(())
     }
 }
 

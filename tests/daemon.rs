@@ -24,6 +24,7 @@ struct TestRuntime {
     events: Vec<&'static str>,
     fail_next_request: bool,
     handled_stream_count: u8,
+    stop_after_first_stream: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -35,6 +36,11 @@ enum TestListener {
 impl TestRuntime {
     fn fail_next_request(mut self) -> Self {
         self.fail_next_request = true;
+        self
+    }
+
+    fn stop_after_first_stream(mut self) -> Self {
+        self.stop_after_first_stream = true;
         self
     }
 
@@ -100,6 +106,10 @@ impl MultiListenerRuntime for TestRuntime {
     fn start(&mut self) -> Result<(), Self::StartError> {
         self.events.push("start");
         Ok(())
+    }
+
+    fn should_continue(&self) -> bool {
+        !self.stop_after_first_stream || self.handled_stream_count == 0
     }
 
     fn stop(&mut self) -> Result<(), Self::StopError> {
@@ -258,6 +268,36 @@ fn multi_listener_daemon_routes_two_sockets_through_one_runtime_owner() {
         daemon.runtime().events(),
         ["start", "ordinary", "meta", "stop"]
     );
+}
+
+#[test]
+fn multi_listener_runtime_can_stop_the_stream_loop_after_a_request() {
+    let directory = TempDir::new().expect("tempdir");
+    let ordinary_socket_path = directory.path().join("ordinary.sock");
+    let meta_socket_path = directory.path().join("meta.sock");
+    let runtime = TestRuntime::default().stop_after_first_stream();
+    let listener_sockets = [
+        ListenerSocket::new(TestListener::Ordinary, &ordinary_socket_path),
+        ListenerSocket::new(TestListener::Meta, &meta_socket_path),
+    ];
+    let mut daemon = MultiListenerDaemon::new(
+        listener_sockets,
+        runtime,
+        RequestErrorLog::new("test-daemon"),
+    )
+    .with_listener_poll_interval(ListenerPollInterval::from_millis(1))
+    .bind()
+    .expect("bind listeners");
+    daemon.start().expect("start runtime");
+
+    let ordinary_client = TestClient::new(&ordinary_socket_path, 4).spawn();
+    daemon
+        .serve_streams()
+        .expect("runtime stop request exits stream loop");
+    daemon.stop().expect("stop runtime");
+
+    assert_eq!(ordinary_client.join().expect("ordinary completes"), [15]);
+    assert_eq!(daemon.runtime().events(), ["start", "ordinary", "stop"]);
 }
 
 #[test]

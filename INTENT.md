@@ -86,6 +86,11 @@ data-bearing runtime object with a listener identity. The one runtime owner is
 the current serialization point for generated Nexus execution and SEMA
 single-writer semantics; components supply the typed ordinary/meta frame
 bridges and the generated Nexus/SEMA behavior.
+Supervised components stop that shared stream loop through the runtime-owned
+`should_continue` predicate, not by copying the listener/polling loop into each
+component crate. The runtime supplies the default forever-serving behavior;
+components with a supervision stop signal override the predicate and keep the
+same start/serve/stop lifecycle shell.
 
 Backpressure and deeper runtime-control machinery are deferred future runtime
 work. Deployment concurrency is a runtime concern, not public contract
