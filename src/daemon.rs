@@ -104,6 +104,7 @@ where
 }
 
 pub struct BoundSingleListenerDaemon<Runtime> {
+    _socket_file: BoundSocketFile,
     listener: UnixListener,
     request_error_log: RequestErrorLog,
     runtime: Runtime,
@@ -121,7 +122,12 @@ where
 
 struct BoundListener<Listener> {
     listener: Listener,
+    _socket_file: BoundSocketFile,
     unix_listener: UnixListener,
+}
+
+struct BoundSocketFile {
+    path: PathBuf,
 }
 
 impl RequestErrorLog {
@@ -237,6 +243,7 @@ impl<Runtime> SingleListenerDaemon<Runtime> {
     pub fn bind(self) -> Result<BoundSingleListenerDaemon<Runtime>, ListenerError> {
         let listener = BoundSocketPath::new(&self.socket_path, self.socket_mode).bind_listener()?;
         Ok(BoundSingleListenerDaemon {
+            _socket_file: BoundSocketFile::new(self.socket_path),
             listener,
             request_error_log: self.request_error_log,
             runtime: self.runtime,
@@ -295,11 +302,15 @@ where
     pub fn bind(self) -> Result<BoundMultiListenerDaemon<Runtime>, ListenerError> {
         let mut listeners = Vec::new();
         for listener_socket in self.listener_sockets {
+            let socket_path = listener_socket.socket_path;
             let unix_listener =
-                BoundSocketPath::new(&listener_socket.socket_path, listener_socket.socket_mode)
-                    .bind_listener()?;
+                BoundSocketPath::new(&socket_path, listener_socket.socket_mode).bind_listener()?;
             unix_listener.set_nonblocking(true)?;
-            listeners.push(BoundListener::new(listener_socket.listener, unix_listener));
+            listeners.push(BoundListener::new(
+                listener_socket.listener,
+                socket_path,
+                unix_listener,
+            ));
         }
         Ok(BoundMultiListenerDaemon {
             listeners,
@@ -422,9 +433,10 @@ where
 }
 
 impl<Listener> BoundListener<Listener> {
-    fn new(listener: Listener, unix_listener: UnixListener) -> Self {
+    fn new(listener: Listener, socket_path: PathBuf, unix_listener: UnixListener) -> Self {
         Self {
             listener,
+            _socket_file: BoundSocketFile::new(socket_path),
             unix_listener,
         }
     }
@@ -439,6 +451,18 @@ impl<Listener> BoundListener<Listener> {
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
             Err(error) => Err(ListenerError::Io(error)),
         }
+    }
+}
+
+impl BoundSocketFile {
+    fn new(path: PathBuf) -> Self {
+        Self { path }
+    }
+}
+
+impl Drop for BoundSocketFile {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
     }
 }
 

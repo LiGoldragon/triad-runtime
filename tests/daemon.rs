@@ -301,6 +301,32 @@ fn multi_listener_runtime_can_stop_the_stream_loop_after_a_request() {
 }
 
 #[test]
+fn multi_listener_daemon_removes_socket_paths_on_drop() {
+    let directory = TempDir::new().expect("tempdir");
+    let ordinary_socket_path = directory.path().join("ordinary.sock");
+    let meta_socket_path = directory.path().join("meta.sock");
+    {
+        let listener_sockets = [
+            ListenerSocket::new(TestListener::Ordinary, &ordinary_socket_path),
+            ListenerSocket::new(TestListener::Meta, &meta_socket_path),
+        ];
+        let _daemon = MultiListenerDaemon::new(
+            listener_sockets,
+            TestRuntime::default(),
+            RequestErrorLog::new("test-daemon"),
+        )
+        .bind()
+        .expect("bind listeners");
+
+        assert!(ordinary_socket_path.exists());
+        assert!(meta_socket_path.exists());
+    }
+
+    assert!(!ordinary_socket_path.exists());
+    assert!(!meta_socket_path.exists());
+}
+
+#[test]
 fn multi_listener_socket_modes_are_applied_per_socket() {
     let directory = TempDir::new().expect("tempdir");
     let ordinary_socket_path = directory.path().join("ordinary.sock");

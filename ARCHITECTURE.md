@@ -109,7 +109,8 @@ sets listeners nonblocking, and passes accepted streams to one
 the current engine-owner shape serial: two sockets do not imply two mutable
 Nexus engines or a broad mutex around SEMA. Components still own their typed
 ordinary/meta frame adapters; the runtime owns socket preparation, request-error
-isolation, and lifecycle order.
+isolation, lifecycle order, and socket-file cleanup when the bound daemon is
+dropped.
 
 `MultiListenerRuntime::should_continue` is the stop boundary for supervised
 components. The default keeps serving forever; a component runtime that owns a

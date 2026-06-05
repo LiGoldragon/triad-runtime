@@ -91,6 +91,9 @@ Supervised components stop that shared stream loop through the runtime-owned
 component crate. The runtime supplies the default forever-serving behavior;
 components with a supervision stop signal override the predicate and keep the
 same start/serve/stop lifecycle shell.
+Socket-file cleanup also belongs to the bound daemon shell: once a bound
+single- or multi-listener daemon is dropped, its Unix socket paths are removed
+so supervised components release their ingress paths after shutdown.
 
 Backpressure and deeper runtime-control machinery are deferred future runtime
 work. Deployment concurrency is a runtime concern, not public contract
