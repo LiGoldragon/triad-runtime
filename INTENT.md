@@ -50,6 +50,11 @@ continuation budget; generated glue projects each component's typed
 `NexusAction` into the fixed `NextStep` shape. Component authors implement the
 three plane engines, the effect handler, and the budget-exhausted reply. The
 adapter that bundles those methods for `RunnerEngines` is generated.
+The runner does not own component feature vocabulary. Per intent record
+`gvaz`, computations, result filters, conditional writes, and similar internal
+engine features are declared as Nexus schema verbs/objects in the component
+crate. `triad-runtime` only drives the already-declared typed actions and
+effects; it must not hide new component capability behind generic runtime code.
 
 The single-listener daemon runner is runtime-owned. Component code should not
 repeat the Unix socket preparation and accept loop that every component daemon

@@ -62,6 +62,13 @@ meaning. The adapter is generated glue, not an author-written fourth engine.
 Component authors still implement the real Signal, Nexus, and SEMA behavior
 plus the effect handler and budget-exhausted reply.
 
+The fixed five-outcome loop is mechanics, not feature vocabulary. If a
+component adds a computed operation, a result filter, a conditional write, or a
+similar internal engine feature, that feature is first declared in the
+component's Nexus schema as a verb/object. The runtime may then drive the
+resulting typed action or effect, but the feature remains visible in the
+component schema instead of disappearing into shared library code.
+
 `ContinuationLimit`, `ContinuationBudget`, and `ContinuationExhausted` make the
 recursion limit typed and testable. A final `Reply` is always allowed, but once
 the limit is exhausted the runner refuses to dispatch another storage,
