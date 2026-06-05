@@ -10,6 +10,7 @@
 pub mod argument;
 pub mod daemon;
 pub mod frame;
+pub mod role;
 pub mod runner;
 pub mod trace;
 
@@ -21,6 +22,10 @@ pub use daemon::{
     SingleListenerDaemonError,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
+pub use role::{
+    NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
+    SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,
+};
 pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
 };

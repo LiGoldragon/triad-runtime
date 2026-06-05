@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 
 use triad_runtime::{
-    ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
+    ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, NexusEffectCommand,
+    NexusWork, Runner, RunnerEngines, SemaReadInput, SemaWriteInput,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -60,6 +61,14 @@ impl TestEffect {
         Self { label }
     }
 }
+
+impl NexusWork for TestWork {}
+
+impl SemaWriteInput for TestSemaWrite {}
+
+impl SemaReadInput for TestSemaRead {}
+
+impl NexusEffectCommand for TestEffect {}
 
 impl TestEngines {
     fn cloned_actions(&self) -> Vec<&'static str> {

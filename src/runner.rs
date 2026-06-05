@@ -1,3 +1,5 @@
+use crate::{NexusEffectCommand, NexusWork, SemaReadInput, SemaWriteInput};
+
 const DEFAULT_CONTINUATION_LIMIT_COUNT: u32 = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -29,10 +31,10 @@ pub enum NextStep<Reply, SemaWrite, SemaRead, Effect, Work> {
 
 pub trait RunnerEngines {
     type Reply;
-    type SemaWrite;
-    type SemaRead;
-    type Effect;
-    type Work;
+    type SemaWrite: SemaWriteInput;
+    type SemaRead: SemaReadInput;
+    type Effect: NexusEffectCommand;
+    type Work: NexusWork;
 
     fn decide_next_step(&mut self, work: Self::Work) -> RunnerNextStep<Self>
     where
