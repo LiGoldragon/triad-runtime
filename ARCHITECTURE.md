@@ -75,6 +75,33 @@ the limit is exhausted the runner refuses to dispatch another storage,
 effect, or continuation step and asks the component for a typed error reply.
 The default limit is 32 non-reply steps.
 
+### Runner ownership and the not-yet-built `triad_main!`
+
+The ownership line is exact. `triad-runtime` owns the generic recursive runner
+and nothing component-specific: `Runner`, `Runner::drive`, the `NextStep`
+five-outcome enum, the `RunnerEngines` role trait, and the typed
+`ContinuationLimit` / `ContinuationBudget` / `ContinuationExhausted` budget.
+
+The per-component runner GLUE is NOT owned by `triad-runtime`. The default
+`NexusEngine::execute` method — which constructs a `Runner` from the component's
+`continuation_limit`, wraps the component engine in a `RunnerEngines` adapter,
+calls `Runner::drive`, and projects the reply back into a `NexusAction` — is
+schema-emitted by `schema-rust-next` into each component crate. In `spirit` that
+glue is the generated `src/schema/nexus.rs`. `triad-runtime` provides the loop;
+the schema provides each component's typed entry into the loop.
+
+`triad_main!` is the INTENDED runner entry-point emission named in workspace
+intent (Spirit records 1486 / 1419) — a single emitted macro a component daemon
+`main` would invoke to wire configuration, engines, and listener into the
+runtime without a hand-written startup body. It is NOT YET BUILT: no
+`triad_main!` macro exists in this crate, in `schema-rust-next`, or in any
+component crate. Today component daemons reach the runner through a hand-written
+`main` plus the schema-emitted `NexusEngine::execute` default method —
+`spirit`'s `spirit-daemon.rs` calls `DaemonCommand::from_environment().run()`.
+`triad-runtime` does NOT own or emit `triad_main!`; when the emission lands it
+will be a `schema-rust-next` emitter responsibility, and `triad-runtime` will
+continue to own only the generic runner the emitted entry point drives.
+
 `role.rs` names the reusable engine roles as traits. Generated component roots
 such as `NexusWork`, `CommandSemaWrite`, `CommandSemaRead`, and
 `CommandEffect` implement `NexusWork`, `SemaWriteInput`, `SemaReadInput`, and

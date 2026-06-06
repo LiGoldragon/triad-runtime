@@ -64,6 +64,31 @@ continuation budget; generated glue projects each component's typed
 `NexusAction` into the fixed `NextStep` shape. Component authors implement the
 three plane engines, the effect handler, and the budget-exhausted reply. The
 adapter that bundles those methods for `RunnerEngines` is generated.
+
+The ownership boundary for the runner is precise, so a reader is not misled
+about who owns what. `triad-runtime` owns ONLY the generic recursive runner
+machinery: `Runner`, `Runner::drive`, the `NextStep` five-outcome enum, the
+`RunnerEngines` role trait, and the typed `ContinuationLimit` /
+`ContinuationBudget` / `ContinuationExhausted` budget. The per-component runner
+GLUE — the default `NexusEngine::execute` method that constructs a `Runner`,
+builds the component's `RunnerEngines` adapter, calls `Runner::drive`, and wraps
+the reply back into a `NexusAction` — is NOT owned by `triad-runtime`. That glue
+is schema-emitted by `schema-rust-next` into each component crate (in `spirit`
+it lives in the generated `src/schema/nexus.rs`). `triad-runtime` supplies the
+loop; the schema supplies the per-component entry into the loop.
+
+`triad_main!` is the INTENDED runner entry-point emission named in workspace
+intent (Spirit records 1486 / 1419): a single emitted macro a component daemon
+`main` would invoke to wire its configuration, engines, and listener into the
+runtime without hand-writing the startup body. It is NOT YET BUILT — no
+`triad_main!` macro exists in `triad-runtime`, in `schema-rust-next`, or in any
+component crate. Today the daemon `main` is hand-written: `spirit`'s
+`spirit-daemon.rs` calls `DaemonCommand::from_environment().run()`, and the
+recursive runner is reached through the schema-emitted `NexusEngine::execute`
+default method, not through any `triad_main!`. `triad-runtime` neither owns nor
+emits `triad_main!`; when that emission lands it will be a `schema-rust-next`
+emitter responsibility, with `triad-runtime` continuing to own only the generic
+runner the emitted entry point drives.
 The runner does not own component feature vocabulary. Per intent record
 `gvaz`, computations, result filters, conditional writes, and similar internal
 engine features are declared as Nexus schema verbs/objects in the component
