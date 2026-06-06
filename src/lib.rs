@@ -27,7 +27,7 @@ pub use daemon::{
     SocketMode,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
-pub use process::{DaemonConfiguration, ExitReport};
+pub use process::{ConnectionContext, DaemonConfiguration, ExitReport};
 pub use role::{
     NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
     SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,

@@ -9,6 +9,7 @@ description  = "Shared runtime support for schema-derived Signal/Nexus/SEMA tria
 publish      = false
 
 [dependencies]
+rustix = { version = "1", default-features = false, features = ["std", "net"] }
 signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
 thiserror = "2"
 

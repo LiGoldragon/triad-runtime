@@ -1,10 +1,11 @@
 use std::{
     fmt::{Display, Formatter},
+    os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use triad_runtime::{DaemonConfiguration, ExitReport, SocketMode};
+use triad_runtime::{ConnectionContext, DaemonConfiguration, ExitReport, SocketMode};
 
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 
@@ -101,6 +102,35 @@ fn multi_listener_configuration_exposes_meta_and_trace_tiers() {
         configuration.meta_socket_mode(),
         Some(SocketMode::new(OWNER_ONLY_SOCKET_MODE))
     );
+}
+
+#[test]
+fn connection_context_reads_peer_credentials_of_a_connected_pair() {
+    // A connected `UnixStream` pair is two ends of the same in-process socket, so
+    // both ends' peer credentials are this test process's own uid/gid. The
+    // witness: `from_stream` reads them without error and both ends agree.
+    let (left, right) = UnixStream::pair().expect("create a connected unix socket pair");
+
+    let left_context =
+        ConnectionContext::from_stream(&left).expect("read peer credentials of the left end");
+    let right_context =
+        ConnectionContext::from_stream(&right).expect("read peer credentials of the right end");
+
+    assert_eq!(left_context.user_id(), right_context.user_id());
+    assert_eq!(left_context.group_id(), right_context.group_id());
+    assert!(
+        left_context.process_id().is_some(),
+        "a connected in-process peer has a vouched process identifier"
+    );
+}
+
+#[test]
+fn connection_context_new_carries_the_explicit_credentials() {
+    let context = ConnectionContext::new(1000, 1000, Some(4242));
+
+    assert_eq!(context.user_id(), 1000);
+    assert_eq!(context.group_id(), 1000);
+    assert_eq!(context.process_id(), Some(4242));
 }
 
 #[test]

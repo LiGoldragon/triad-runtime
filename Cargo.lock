@@ -559,6 +559,7 @@ name = "triad-runtime"
 version = "0.2.1"
 dependencies = [
  "rkyv",
+ "rustix",
  "signal-frame",
  "tempfile",
  "thiserror",

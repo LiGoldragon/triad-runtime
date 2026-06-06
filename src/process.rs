@@ -7,9 +7,76 @@
 //! accessors every triad daemon configuration exposes, and the exit reporter
 //! owns only the process name it prints with.
 
-use std::{fmt::Display, path::Path, process::ExitCode};
+use std::{fmt::Display, os::unix::net::UnixStream, path::Path, process::ExitCode};
 
 use crate::SocketMode;
+
+/// The per-connection peer credentials of an accepted Unix-socket stream.
+///
+/// The emitted daemon spine reads these once per accepted working connection and
+/// threads them into the component's working-input hook, so a component can mint
+/// an origin (owner vs non-owner local user vs internal component instance)
+/// from the operating-system trust boundary rather than trusting payload claims.
+///
+/// The credentials are the kernel-vouched `SO_PEERCRED` triple, obtained through
+/// rustix's safe [`rustix::net::sockopt::socket_peercred`] wrapper — no raw
+/// `getsockopt` and no `unsafe` in this crate, so `triad-runtime` keeps
+/// `unsafe_code = "forbid"`. The standard library's own `UnixStream::peer_cred`
+/// is still unstable on the stable toolchain (`peer_credentials_unix_socket`),
+/// which is why the safe rustix wrapper carries this instead. The peer process
+/// identifier is `Option<i32>` because the kernel does not always vouch for one
+/// (`SO_PEERCRED` can report a zero pid on a socket whose peer is gone);
+/// `rustix` keeps a real `Pid` here, but the accessor lifts an absent identifier
+/// to `None`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConnectionContext {
+    user_id: u32,
+    group_id: u32,
+    process_id: Option<i32>,
+}
+
+impl ConnectionContext {
+    /// Construct a connection context from explicit credentials. The
+    /// `from_stream` path is the production source; this constructor exists so
+    /// tests and in-process callers can build a context without a real socket.
+    pub const fn new(user_id: u32, group_id: u32, process_id: Option<i32>) -> Self {
+        Self {
+            user_id,
+            group_id,
+            process_id,
+        }
+    }
+
+    /// Read the kernel-vouched peer credentials of an accepted stream.
+    ///
+    /// Wraps [`rustix::net::sockopt::socket_peercred`], which performs the
+    /// `getsockopt(SO_PEERCRED)` query internally; an operating-system failure to
+    /// read the credentials surfaces as a [`std::io::Error`] the emitted spine
+    /// lifts into its typed daemon error.
+    pub fn from_stream(stream: &UnixStream) -> std::io::Result<Self> {
+        let credentials = rustix::net::sockopt::socket_peercred(stream)?;
+        Ok(Self {
+            user_id: credentials.uid.as_raw(),
+            group_id: credentials.gid.as_raw(),
+            process_id: Some(credentials.pid.as_raw_pid()),
+        })
+    }
+
+    /// The peer's Unix user identifier (`uid`).
+    pub fn user_id(&self) -> u32 {
+        self.user_id
+    }
+
+    /// The peer's Unix group identifier (`gid`).
+    pub fn group_id(&self) -> u32 {
+        self.group_id
+    }
+
+    /// The peer's process identifier (`pid`), when the kernel vouches for one.
+    pub fn process_id(&self) -> Option<i32> {
+        self.process_id
+    }
+}
 
 /// The uniform socket-and-storage surface the emitted daemon reads from a
 /// component's configuration object.
