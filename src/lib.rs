@@ -10,6 +10,7 @@
 pub mod argument;
 pub mod daemon;
 pub mod frame;
+pub mod process;
 pub mod role;
 pub mod runner;
 pub mod streaming;
@@ -26,6 +27,7 @@ pub use daemon::{
     SocketMode,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
+pub use process::{DaemonConfiguration, ExitReport};
 pub use role::{
     NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
     SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,

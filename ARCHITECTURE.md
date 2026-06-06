@@ -175,6 +175,27 @@ streams and which event variants belong to streams; generated code exposes the
 typed frame aliases; component code supplies filter semantics and writes frames
 to the subscriber connection.
 
+## Process Runtime
+
+`process.rs` owns the component-agnostic process edge the emitted daemon
+module (`schema-rust-next` `RustEmissionTarget::Daemon`) reads.
+
+`DaemonConfiguration` is the uniform socket-and-storage surface a component's
+hand-written `Configuration` implements: `socket_path` (the required working
+listener), `meta_socket_path` (the optional owner-only meta tier),
+`database_path`, `trace_socket_path`, and `meta_socket_mode`. The emitted
+`Daemon::run` binds listeners and opens the engine by reading these accessors,
+so the emitter never names component-specific configuration methods. The
+optional tiers default to `None`, so a single-listener daemon implements only
+`socket_path` + `database_path`.
+
+`ExitReport` owns the process name and turns a daemon's top-level `Result`
+into a `std::process::ExitCode` through `from_result`: `Ok` exits success,
+`Err` prints `"<process_name>: <error>"` to stderr and exits failure. This is
+the component-agnostic `fn main` tail the emitted daemon calls, so the
+exit-mapping verb lives on a real noun (the process name) rather than as a
+free function re-emitted into every component.
+
 ## Trace Runtime
 
 `TraceEventFrame` is the component boundary. A component's generated
@@ -225,6 +246,8 @@ implementation scope.
 - `src/lib.rs` — crate surface.
 - `src/argument.rs` — component process-edge argument classification.
 - `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
+- `src/process.rs` — component-agnostic `DaemonConfiguration` socket surface
+  and `ExitReport` process-exit mapping for the emitted daemon module.
 - `src/daemon.rs` — reusable single-listener Unix daemon runner and lifecycle
   trait, plus multi-listener ordinary/meta daemon shell.
 - `src/runner.rs` — generic recursive Nexus runner and typed continuation
