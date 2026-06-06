@@ -14,6 +14,7 @@ pub mod role;
 pub mod runner;
 pub mod streaming;
 pub mod trace;
+pub mod workers;
 
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
@@ -40,3 +41,4 @@ pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
     TraceSocketPath,
 };
+pub use workers::BoundedWorkers;
