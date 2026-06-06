@@ -77,18 +77,13 @@ is schema-emitted by `schema-rust-next` into each component crate (in `spirit`
 it lives in the generated `src/schema/nexus.rs`). `triad-runtime` supplies the
 loop; the schema supplies the per-component entry into the loop.
 
-`triad_main!` is the INTENDED runner entry-point emission named in workspace
-intent (Spirit records 1486 / 1419): a single emitted macro a component daemon
-`main` would invoke to wire its configuration, engines, and listener into the
-runtime without hand-writing the startup body. It is NOT YET BUILT — no
-`triad_main!` macro exists in `triad-runtime`, in `schema-rust-next`, or in any
-component crate. Today the daemon `main` is hand-written: `spirit`'s
-`spirit-daemon.rs` calls `DaemonCommand::from_environment().run()`, and the
-recursive runner is reached through the schema-emitted `NexusEngine::execute`
-default method, not through any `triad_main!`. `triad-runtime` neither owns nor
-emits `triad_main!`; when that emission lands it will be a `schema-rust-next`
-emitter responsibility, with `triad-runtime` continuing to own only the generic
-runner the emitted entry point drives.
+The old shorthand `triad_main!` is realized as a source-visible emitted daemon
+module, not a proc macro. `schema-rust-next` emits `src/schema/daemon.rs` when a
+component build declares a `NexusDaemonShape`; that module owns `DaemonCommand`,
+`ComponentDaemon`, the decode → execute → encode spine, single/multi listener
+selection, `DaemonError`, and `DaemonEntry::run_to_exit_code`. `triad-runtime`
+does not emit that module. It supplies the reusable process, listener, runner,
+frame, streaming, and exit-report objects the emitted module uses.
 The runner does not own component feature vocabulary. Per intent record
 `gvaz`, computations, result filters, conditional writes, and similar internal
 engine features are declared as Nexus schema verbs/objects in the component
@@ -119,6 +114,14 @@ same start/serve/stop lifecycle shell.
 Socket-file cleanup also belongs to the bound daemon shell: once a bound
 single- or multi-listener daemon is dropped, its Unix socket paths are removed
 so supervised components release their ingress paths after shutdown.
+
+Accepted-connection trust context is runtime-owned and emitter-wired.
+`ConnectionContext` carries kernel-vouched `SO_PEERCRED` uid/gid/pid for a Unix
+socket stream, using rustix's safe `socket_peercred` wrapper so runtime code
+keeps `unsafe_code = "forbid"`. `schema-rust-next` emits the working-input hook
+that receives this context; components decide what it means for provenance or
+authority. The runtime owns the credential noun and reader, not the
+component-specific trust policy.
 
 Backpressure and deeper runtime-control machinery are deferred future runtime
 work. Deployment concurrency is a runtime concern, not public contract

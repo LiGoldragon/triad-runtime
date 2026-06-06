@@ -75,7 +75,7 @@ the limit is exhausted the runner refuses to dispatch another storage,
 effect, or continuation step and asks the component for a typed error reply.
 The default limit is 32 non-reply steps.
 
-### Runner ownership and the not-yet-built `triad_main!`
+### Runner ownership and the emitted daemon entry
 
 The ownership line is exact. `triad-runtime` owns the generic recursive runner
 and nothing component-specific: `Runner`, `Runner::drive`, the `NextStep`
@@ -90,17 +90,15 @@ schema-emitted by `schema-rust-next` into each component crate. In `spirit` that
 glue is the generated `src/schema/nexus.rs`. `triad-runtime` provides the loop;
 the schema provides each component's typed entry into the loop.
 
-`triad_main!` is the INTENDED runner entry-point emission named in workspace
-intent (Spirit records 1486 / 1419) — a single emitted macro a component daemon
-`main` would invoke to wire configuration, engines, and listener into the
-runtime without a hand-written startup body. It is NOT YET BUILT: no
-`triad_main!` macro exists in this crate, in `schema-rust-next`, or in any
-component crate. Today component daemons reach the runner through a hand-written
-`main` plus the schema-emitted `NexusEngine::execute` default method —
-`spirit`'s `spirit-daemon.rs` calls `DaemonCommand::from_environment().run()`.
-`triad-runtime` does NOT own or emit `triad_main!`; when the emission lands it
-will be a `schema-rust-next` emitter responsibility, and `triad-runtime` will
-continue to own only the generic runner the emitted entry point drives.
+The old shorthand `triad_main!` is now realized as a source-visible emitted
+daemon module, not as a proc-macro invocation. `schema-rust-next` emits
+`src/schema/daemon.rs` when a component build declares a `NexusDaemonShape`.
+That module owns `DaemonCommand`, `ComponentDaemon`, the
+`GeneratedDaemonRuntime` decode -> execute -> encode spine, single/multi
+listener selection, `DaemonError`, and `DaemonEntry::run_to_exit_code`.
+`triad-runtime` does NOT emit that module; it supplies the reusable process,
+listener, runner, frame, streaming, and exit-report objects the emitted module
+uses.
 
 `role.rs` names the reusable engine roles as traits. Generated component roots
 such as `NexusWork`, `CommandSemaWrite`, `CommandSemaRead`, and
@@ -195,6 +193,15 @@ into a `std::process::ExitCode` through `from_result`: `Ok` exits success,
 the component-agnostic `fn main` tail the emitted daemon calls, so the
 exit-mapping verb lives on a real noun (the process name) rather than as a
 free function re-emitted into every component.
+
+`ConnectionContext` is the trust-boundary carrier for accepted Unix-socket
+streams. The schema-rust-next emitted daemon module reads it from each accepted
+stream with rustix's safe `socket_peercred` wrapper (`SO_PEERCRED`) and passes
+it into the component working-input hook. Components that mint provenance can
+classify owner/non-owner/internal origins from kernel-vouched uid/gid/pid
+instead of trusting payload fields. `triad-runtime` keeps the context type and
+safe credential reader; the actual `handle_working_input` hook signature and
+wiring are emitted by schema-rust-next.
 
 ## Trace Runtime
 

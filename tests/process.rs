@@ -118,19 +118,20 @@ fn connection_context_reads_peer_credentials_of_a_connected_pair() {
 
     assert_eq!(left_context.user_id(), right_context.user_id());
     assert_eq!(left_context.group_id(), right_context.group_id());
-    assert!(
-        left_context.process_id().is_some(),
+    assert_ne!(
+        left_context.process_id(),
+        0,
         "a connected in-process peer has a vouched process identifier"
     );
 }
 
 #[test]
 fn connection_context_new_carries_the_explicit_credentials() {
-    let context = ConnectionContext::new(1000, 1000, Some(4242));
+    let context = ConnectionContext::new(1000, 1000, 4242);
 
     assert_eq!(context.user_id(), 1000);
     assert_eq!(context.group_id(), 1000);
-    assert_eq!(context.process_id(), Some(4242));
+    assert_eq!(context.process_id(), 4242);
 }
 
 #[test]

@@ -13,33 +13,32 @@ use crate::SocketMode;
 
 /// The per-connection peer credentials of an accepted Unix-socket stream.
 ///
-/// The emitted daemon spine reads these once per accepted working connection and
-/// threads them into the component's working-input hook, so a component can mint
-/// an origin (owner vs non-owner local user vs internal component instance)
-/// from the operating-system trust boundary rather than trusting payload claims.
+/// The schema-rust-next emitted daemon module reads these once per accepted
+/// working connection and threads them into the component's working-input hook,
+/// so a component can mint an origin (owner vs non-owner local user vs internal
+/// component instance) from the operating-system trust boundary rather than
+/// trusting payload claims.
 ///
 /// The credentials are the kernel-vouched `SO_PEERCRED` triple, obtained through
 /// rustix's safe [`rustix::net::sockopt::socket_peercred`] wrapper — no raw
 /// `getsockopt` and no `unsafe` in this crate, so `triad-runtime` keeps
 /// `unsafe_code = "forbid"`. The standard library's own `UnixStream::peer_cred`
 /// is still unstable on the stable toolchain (`peer_credentials_unix_socket`),
-/// which is why the safe rustix wrapper carries this instead. The peer process
-/// identifier is `Option<i32>` because the kernel does not always vouch for one
-/// (`SO_PEERCRED` can report a zero pid on a socket whose peer is gone);
-/// `rustix` keeps a real `Pid` here, but the accessor lifts an absent identifier
-/// to `None`.
+/// which is why the safe rustix wrapper carries this instead. `rustix` exposes a
+/// real `Pid`, so the peer process identifier is carried as a plain `i32`
+/// instead of a fake optional value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConnectionContext {
     user_id: u32,
     group_id: u32,
-    process_id: Option<i32>,
+    process_id: i32,
 }
 
 impl ConnectionContext {
     /// Construct a connection context from explicit credentials. The
     /// `from_stream` path is the production source; this constructor exists so
     /// tests and in-process callers can build a context without a real socket.
-    pub const fn new(user_id: u32, group_id: u32, process_id: Option<i32>) -> Self {
+    pub const fn new(user_id: u32, group_id: u32, process_id: i32) -> Self {
         Self {
             user_id,
             group_id,
@@ -58,7 +57,7 @@ impl ConnectionContext {
         Ok(Self {
             user_id: credentials.uid.as_raw(),
             group_id: credentials.gid.as_raw(),
-            process_id: Some(credentials.pid.as_raw_pid()),
+            process_id: credentials.pid.as_raw_pid(),
         })
     }
 
@@ -72,8 +71,8 @@ impl ConnectionContext {
         self.group_id
     }
 
-    /// The peer's process identifier (`pid`), when the kernel vouches for one.
-    pub fn process_id(&self) -> Option<i32> {
+    /// The peer's process identifier (`pid`).
+    pub fn process_id(&self) -> i32 {
         self.process_id
     }
 }
