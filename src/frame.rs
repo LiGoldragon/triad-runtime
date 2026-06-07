@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 
 use thiserror::Error;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 const LENGTH_PREFIX_BYTE_COUNT: usize = 4;
 
@@ -102,6 +103,18 @@ impl LengthPrefixedCodec {
         Ok(())
     }
 
+    pub async fn write_body_async<Writer>(
+        &self,
+        writer: &mut Writer,
+        body: &FrameBody,
+    ) -> Result<(), FrameError>
+    where
+        Writer: AsyncWrite + Unpin,
+    {
+        writer.write_all(&self.encode_body(body)?).await?;
+        Ok(())
+    }
+
     pub fn read_body(&self, reader: &mut impl Read) -> Result<FrameBody, FrameError> {
         let mut length_bytes = [0_u8; LENGTH_PREFIX_BYTE_COUNT];
         reader.read_exact(&mut length_bytes)?;
@@ -109,6 +122,22 @@ impl LengthPrefixedCodec {
         self.validate_length(length)?;
         let mut body = vec![0_u8; length];
         reader.read_exact(&mut body)?;
+        Ok(FrameBody::new(body))
+    }
+
+    pub async fn read_body_async<Reader>(
+        &self,
+        reader: &mut Reader,
+    ) -> Result<FrameBody, FrameError>
+    where
+        Reader: AsyncRead + Unpin,
+    {
+        let mut length_bytes = [0_u8; LENGTH_PREFIX_BYTE_COUNT];
+        reader.read_exact(&mut length_bytes).await?;
+        let length = u32::from_be_bytes(length_bytes) as usize;
+        self.validate_length(length)?;
+        let mut body = vec![0_u8; length];
+        reader.read_exact(&mut body).await?;
         Ok(FrameBody::new(body))
     }
 

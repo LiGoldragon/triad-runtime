@@ -25,6 +25,30 @@ schema-emitted frame tests each hand-rolled the same prefix logic. Components
 configure a maximum body length by constructing `MaximumFrameLength`; the
 default accepts the full `u32` prefix range.
 
+The codec exposes both synchronous `Read` / `Write` and Tokio async
+`AsyncRead` / `AsyncWrite` methods. The async methods are the actor-native
+daemon path: a generated listener can stay on Tokio IO without reimplementing
+the length-prefix parser or blocking a runtime worker thread.
+
+## Actor Runtime
+
+`actor_runtime.rs` is the Kameo/Tokio substrate for the next daemon shell. The
+first reusable primitive is request admission:
+
+- `RequestConcurrencyLimit` names the bounded concurrency dial;
+- `RequestPermitPool` owns a Tokio semaphore;
+- `RequestPermit` holds one live request slot until the request driver drops
+  it;
+- `RequestGate` is a data-bearing Kameo actor that accepts permit requests and
+  delegates the actual wait through `Context::spawn`.
+
+The delegated wait is load-bearing. If all permits are held, the permit request
+may wait, but the `RequestGate` mailbox remains available for status,
+shutdown, or future control messages. This is the runtime pattern downstream
+schema emitters should copy for storage and child-process effects: accept the
+typed message, update actor state, return a delegated typed reply, and let the
+slow wait happen outside the actor handler.
+
 ## Argument Runtime
 
 `ComponentCommand` owns the process-edge single-argument rule. It accepts an

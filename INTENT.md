@@ -16,6 +16,13 @@ the runner executes those declared Nexus verbs. (psyche 2026-06-05, record z6qu)
 The runtime crate is separate from schema emission. `schema-rust-next` emits
 component-specific nouns and traits; `triad-runtime` provides reusable runtime
 objects those generated surfaces can use at run time.
+
+Actor-native daemon execution is the new target shape. `triad-runtime` should
+provide Kameo/Tokio runtime nouns that schema-emitted daemons reuse, and those
+nouns must keep actor mailboxes available while requests wait on admission,
+storage, child processes, or other effects. Long-running waits are delegated
+through actor-aware tasks and typed replies; they are not synchronous work hidden
+inside an actor handler.
 Reusable engine-role names are expressed as runtime traits when concrete
 component variants differ. A component still owns its generated `NexusAction`,
 `NexusWork`, `SemaWriteInput`, and sibling enums, but shared runtime code speaks
@@ -42,6 +49,9 @@ Shared runtime byte mechanics live here before each component hand-rolls them:
 `LengthPrefixedCodec` owns the four-byte big-endian length-prefix envelope
 used by trace and signal transports. The payload remains caller-owned binary
 data; the codec never interprets schema, NOTA, or rkyv.
+The same codec owns synchronous and Tokio async IO methods so actor-native
+listeners do not duplicate frame parsing or fall back to blocking `Read` /
+`Write` in async request drivers.
 
 Streaming subscription mechanics are runtime-owned once schema exposes the
 stream. `signal-frame` owns the low-level wire kernel; generated schemas own

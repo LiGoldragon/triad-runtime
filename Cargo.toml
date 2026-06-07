@@ -1,17 +1,19 @@
 [package]
 name         = "triad-runtime"
-version      = "0.2.1"
+version      = "0.3.0"
 edition      = "2024"
-rust-version = "1.85"
+rust-version = "1.88.0"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/triad-runtime"
 description  = "Shared runtime support for schema-derived Signal/Nexus/SEMA triad daemons."
 publish      = false
 
 [dependencies]
+kameo = { version = "0.20.0", default-features = false, features = ["macros", "tracing"] }
 rustix = { version = "1", default-features = false, features = ["std", "net"] }
 signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
 thiserror = "2"
+tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [dev-dependencies]
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }

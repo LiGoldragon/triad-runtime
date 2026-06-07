@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod actor_runtime;
 pub mod argument;
 pub mod daemon;
 pub mod frame;
@@ -17,6 +18,10 @@ pub mod streaming;
 pub mod trace;
 pub mod workers;
 
+pub use actor_runtime::{
+    AcquireRequestPermit, RequestConcurrencyLimit, RequestGate, RequestGateStatus,
+    RequestGateStatusRequest, RequestPermit, RequestPermitError, RequestPermitPool,
+};
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
 };
