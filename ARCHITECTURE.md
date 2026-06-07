@@ -182,7 +182,7 @@ module (`schema-rust-next` `RustEmissionTarget::Daemon`) reads.
 
 `DaemonConfiguration` is the uniform socket-and-storage surface a component's
 hand-written `Configuration` implements: `socket_path` (the required working
-listener), `meta_socket_path` (the optional owner-only meta tier),
+listener), `meta_socket_path` (the optional meta tier),
 `database_path`, `trace_socket_path`, and `meta_socket_mode`. The emitted
 `Daemon::run` binds listeners and opens the engine by reading these accessors,
 so the emitter never names component-specific configuration methods. The

@@ -81,7 +81,7 @@ impl ConnectionContext {
 /// component's configuration object.
 ///
 /// A component's hand-written `Configuration` implements this so the emitted
-/// `Daemon::run` can bind the working socket, the optional owner-only meta
+/// `Daemon::run` can bind the working socket, the optional meta
 /// socket, open the database, and wire the optional testing-trace socket
 /// without the emitter naming component-specific accessor methods. Paths stay
 /// borrowed from the configuration; the optional meta and trace slots are
@@ -91,8 +91,8 @@ pub trait DaemonConfiguration {
     /// daemon binds at least this listener.
     fn socket_path(&self) -> &Path;
 
-    /// The owner-only meta-signal socket path, when the component runs a
-    /// second meta listener tier. `None` for single-listener daemons.
+    /// The meta-signal socket path, when the component runs a second meta
+    /// listener tier. `None` for single-listener daemons.
     fn meta_socket_path(&self) -> Option<&Path> {
         None
     }
@@ -106,10 +106,10 @@ pub trait DaemonConfiguration {
         None
     }
 
-    /// The owner-only file mode applied to the meta socket, when a meta
-    /// listener tier is bound. `None` leaves the meta socket at the default
-    /// umask-derived mode; components that need owner-only authority return a
-    /// concrete [`SocketMode`].
+    /// The file mode applied to the meta socket, when a meta listener tier is
+    /// bound. `None` leaves the meta socket at the default umask-derived mode;
+    /// components that need restricted meta authority return a concrete
+    /// [`SocketMode`].
     fn meta_socket_mode(&self) -> Option<SocketMode> {
         None
     }
