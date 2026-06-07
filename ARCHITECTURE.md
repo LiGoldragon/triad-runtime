@@ -58,6 +58,23 @@ an `AcceptedConnection`: the Tokio stream, `ConnectionContext` read through
 stale socket removal, socket-file cleanup, request admission, and request-error
 logging.
 
+`ActorMultiListenerDaemon` is the actor-native ordinary/meta listener shell. It
+binds a list of `ActorListenerSocket<Listener>` values, applies each socket's
+optional mode, and starts one accept task per listener. Each listener task owns
+its own `RequestGate`, so a slow or concurrency-limited ordinary request cannot
+block meta admission. Accepted streams become `AcceptedConnection` values and
+are passed to a shared data-bearing `ActorMultiConnectionRuntime` together with
+the listener identity. Request failures are logged per listener and do not stop
+the accept loops; listener task failures remain fatal to the daemon.
+
+The per-listener gate choice is deliberate. A single global gate would re-create
+the old "one concern blocks another" bug at the runtime layer: if the ordinary
+socket holds the only permit, the meta socket would wait even though its own
+actor task and authority plane are independent. Components that need a
+cross-listener global budget can add that as component policy inside their
+runtime; the shared shell's default backpressure boundary is the listener
+concern.
+
 ## Argument Runtime
 
 `ComponentCommand` owns the process-edge single-argument rule. It accepts an
@@ -162,15 +179,12 @@ rkyv archives, NOTA, SEMA tables, trace configuration, or policy meaning. A
 component's `handle_stream` method remains the place where generated
 signal-frame transport meets the component engine.
 
-`MultiListenerDaemon` is the ordinary/meta daemon shell. It binds a list of
-`ListenerSocket<Listener>` values, applies each socket's optional `SocketMode`,
-sets listeners nonblocking, and passes accepted streams to one
-`MultiListenerRuntime` object together with the listener identity. This keeps
-the current engine-owner shape serial: two sockets do not imply two mutable
-Nexus engines or a broad mutex around SEMA. Components still own their typed
-ordinary/meta frame adapters; the runtime owns socket preparation, request-error
-isolation, lifecycle order, and socket-file cleanup when the bound daemon is
-dropped.
+`MultiListenerDaemon` is the legacy synchronous ordinary/meta shell. It binds a
+list of `ListenerSocket<Listener>` values, applies each socket's optional
+`SocketMode`, sets listeners nonblocking, and polls them in one synchronous
+loop. It remains only for consumers that have not yet migrated to
+`ActorMultiListenerDaemon`. New schema-emitted daemon work should not target
+the polling shell.
 
 `MultiListenerRuntime::should_continue` is the stop boundary for supervised
 components. The default keeps serving forever; a component runtime that owns a

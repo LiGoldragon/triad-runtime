@@ -19,10 +19,12 @@ pub mod trace;
 pub mod workers;
 
 pub use actor_runtime::{
-    AcceptedConnection, AcquireRequestPermit, ActorBoundSingleListenerDaemon,
-    ActorConnectionRuntime, ActorListenerError, ActorSingleListenerDaemon,
-    ActorSingleListenerDaemonError, RequestConcurrencyLimit, RequestGate, RequestGateStatus,
-    RequestGateStatusRequest, RequestPermit, RequestPermitError, RequestPermitPool,
+    AcceptedConnection, AcquireRequestPermit, ActorBoundMultiListenerDaemon,
+    ActorBoundSingleListenerDaemon, ActorConnectionRuntime, ActorListenerError,
+    ActorListenerSocket, ActorMultiConnectionRuntime, ActorMultiListenerDaemon,
+    ActorMultiListenerDaemonError, ActorSingleListenerDaemon, ActorSingleListenerDaemonError,
+    RequestConcurrencyLimit, RequestGate, RequestGateStatus, RequestGateStatusRequest,
+    RequestPermit, RequestPermitError, RequestPermitPool,
 };
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,

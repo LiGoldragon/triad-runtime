@@ -27,6 +27,11 @@ The emitted daemon should depend on runtime-owned listener and admission nouns,
 not generate socket accept loops itself: accepted connections enter as typed
 `AcceptedConnection` values carrying the Tokio stream, kernel-vouched peer
 credentials, and the held request permit.
+Multi-listener actor daemons should admit requests per listener concern, not
+through one global gate that lets an ordinary request starve a meta request.
+Each bound ordinary/meta socket owns its own `RequestGate`; the component
+runtime may still be shared, but waiting on one listener's concurrency budget
+does not block another listener's accept loop.
 Reusable engine-role names are expressed as runtime traits when concrete
 component variants differ. A component still owns its generated `NexusAction`,
 `NexusWork`, `SemaWriteInput`, and sibling enums, but shared runtime code speaks
@@ -117,21 +122,20 @@ data-bearing component runtime. Component crates still own their typed
 configuration object, engine construction, signal-frame transport, and domain
 errors.
 
-The multi-listener daemon shell is runtime-owned for ordinary + meta signal
-daemons. `MultiListenerDaemon` binds multiple Unix sockets, applies per-socket
-modes, isolates request errors, and routes accepted streams through one
-data-bearing runtime object with a listener identity. The one runtime owner is
-the current serialization point for generated Nexus execution and SEMA
-single-writer semantics; components supply the typed ordinary/meta frame
-bridges and the generated Nexus/SEMA behavior.
-Supervised components stop that shared stream loop through the runtime-owned
-`should_continue` predicate, not by copying the listener/polling loop into each
-component crate. The runtime supplies the default forever-serving behavior;
-components with a supervision stop signal override the predicate and keep the
-same start/serve/stop lifecycle shell.
+The actor-native multi-listener daemon shell is runtime-owned for ordinary +
+meta signal daemons. `ActorMultiListenerDaemon` binds multiple Unix sockets,
+applies per-socket modes, isolates request errors, and routes accepted
+connections through one data-bearing runtime object with a listener identity.
+The listener accept loops are independent Tokio tasks, and each listener owns
+its own admission gate. The one runtime owner remains the component boundary for
+generated Nexus execution and SEMA single-writer semantics; components supply
+the typed ordinary/meta frame bridges and the generated Nexus/SEMA behavior.
 Socket-file cleanup also belongs to the bound daemon shell: once a bound
 single- or multi-listener daemon is dropped, its Unix socket paths are removed
 so supervised components release their ingress paths after shutdown.
+The older synchronous `MultiListenerDaemon` remains in the crate only as a
+migration surface for consumers not yet moved to actor-native generated daemon
+code; new schema-emitted daemon work should target the actor runtime nouns.
 
 Accepted-connection trust context is runtime-owned and emitter-wired.
 `ConnectionContext` carries kernel-vouched `SO_PEERCRED` uid/gid/pid for a Unix
@@ -141,8 +145,9 @@ that receives this context; components decide what it means for provenance or
 authority. The runtime owns the credential noun and reader, not the
 component-specific trust policy.
 
-Backpressure and deeper runtime-control machinery are deferred future runtime
-work. Deployment concurrency is a runtime concern, not public contract
-vocabulary. The current production slice is trace substrate plus reusable
-frame, argument, runner, single-listener daemon, multi-listener ordinary/meta
-daemon edges, and typed streaming subscription mechanics.
+Deeper runtime-control machinery is deferred future runtime work. Deployment
+concurrency is a runtime concern, not public contract vocabulary. The current
+production slice is trace substrate plus reusable frame, argument, runner,
+actor-native single-listener daemon, actor-native multi-listener ordinary/meta
+daemon edges, legacy synchronous daemon compatibility, and typed streaming
+subscription mechanics.

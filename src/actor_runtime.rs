@@ -6,7 +6,7 @@
 //! backpressure without blocking an actor mailbox.
 
 use std::error::Error;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -57,10 +57,23 @@ pub enum ActorListenerError {
 
     #[error("actor request gate error: {detail}")]
     RequestGate { detail: String },
+
+    #[error("actor listener index {index} is out of range for {listener_count} listener(s)")]
+    ListenerIndexOutOfRange { index: usize, listener_count: usize },
+
+    #[error("actor listener task error: {detail}")]
+    ListenerTask { detail: String },
 }
 
 #[derive(Debug)]
 pub enum ActorSingleListenerDaemonError<RuntimeError> {
+    Listener(ActorListenerError),
+    Start(RuntimeError),
+    Stop(RuntimeError),
+}
+
+#[derive(Debug)]
+pub enum ActorMultiListenerDaemonError<RuntimeError> {
     Listener(ActorListenerError),
     Start(RuntimeError),
     Stop(RuntimeError),
@@ -91,7 +104,7 @@ pub struct RequestGateStatus {
 }
 
 pub trait ActorConnectionRuntime: Send + Sync + 'static {
-    type Error: std::fmt::Display + Send + Sync + 'static;
+    type Error: Display + Send + Sync + 'static;
 
     fn start(&self) -> impl Future<Output = Result<(), Self::Error>> + Send {
         async { Ok(()) }
@@ -103,6 +116,25 @@ pub trait ActorConnectionRuntime: Send + Sync + 'static {
 
     fn handle_connection(
         &self,
+        connection: AcceptedConnection,
+    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+}
+
+pub trait ActorMultiConnectionRuntime: Send + Sync + 'static {
+    type Listener: Clone + Display + Send + Sync + 'static;
+    type Error: Display + Send + Sync + 'static;
+
+    fn start(&self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
+
+    fn stop(&self) -> impl Future<Output = Result<(), Self::Error>> + Send {
+        async { Ok(()) }
+    }
+
+    fn handle_connection(
+        &self,
+        listener: Self::Listener,
         connection: AcceptedConnection,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
@@ -123,6 +155,38 @@ pub struct ActorBoundSingleListenerDaemon<Runtime> {
     runtime: Arc<Runtime>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ActorListenerSocket<Listener> {
+    listener: Listener,
+    socket_path: PathBuf,
+    socket_mode: Option<SocketMode>,
+}
+
+pub struct ActorMultiListenerDaemon<Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime,
+{
+    listener_sockets: Vec<ActorListenerSocket<Runtime::Listener>>,
+    concurrency_limit: RequestConcurrencyLimit,
+    request_error_log: RequestErrorLog,
+    runtime: Arc<Runtime>,
+}
+
+pub struct ActorBoundMultiListenerDaemon<Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime,
+{
+    listeners: Vec<ActorBoundListener<Runtime::Listener>>,
+    request_error_log: RequestErrorLog,
+    runtime: Arc<Runtime>,
+}
+
+struct ActorStoppedMultiListenerDaemon<Runtime> {
+    request_gates: Vec<ActorRef<RequestGate>>,
+    _request_error_log: RequestErrorLog,
+    runtime: Arc<Runtime>,
+}
+
 struct ActorBoundSocketPath<'path> {
     path: &'path Path,
     socket_mode: Option<SocketMode>,
@@ -130,6 +194,22 @@ struct ActorBoundSocketPath<'path> {
 
 struct ActorBoundSocketFile {
     path: PathBuf,
+}
+
+struct ActorBoundListener<Listener> {
+    listener: Listener,
+    _socket_file: ActorBoundSocketFile,
+    unix_listener: TokioUnixListener,
+    request_gate: ActorRef<RequestGate>,
+}
+
+struct ActorListenerTask<Listener, Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime<Listener = Listener>,
+{
+    listener: ActorBoundListener<Listener>,
+    request_error_log: RequestErrorLog,
+    runtime: Arc<Runtime>,
 }
 
 #[cfg(test)]
@@ -352,6 +432,33 @@ impl RequestGateStatus {
     }
 }
 
+impl<Listener> ActorListenerSocket<Listener> {
+    pub fn new(listener: Listener, socket_path: impl Into<PathBuf>) -> Self {
+        Self {
+            listener,
+            socket_path: socket_path.into(),
+            socket_mode: None,
+        }
+    }
+
+    pub fn with_socket_mode(mut self, socket_mode: SocketMode) -> Self {
+        self.socket_mode = Some(socket_mode);
+        self
+    }
+
+    pub fn listener(&self) -> &Listener {
+        &self.listener
+    }
+
+    pub fn socket_path(&self) -> &Path {
+        &self.socket_path
+    }
+
+    pub fn socket_mode(&self) -> Option<SocketMode> {
+        self.socket_mode
+    }
+}
+
 impl Message<AcquireRequestPermit> for RequestGate {
     type Reply = DelegatedReply<Result<RequestPermit, RequestPermitError>>;
 
@@ -375,6 +482,62 @@ impl Message<RequestGateStatusRequest> for RequestGate {
         _context: &mut Context<Self, Self::Reply>,
     ) -> Self::Reply {
         self.status()
+    }
+}
+
+impl<Runtime> ActorMultiListenerDaemon<Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime,
+{
+    pub fn new(
+        listener_sockets: impl IntoIterator<Item = ActorListenerSocket<Runtime::Listener>>,
+        runtime: Runtime,
+        request_error_log: RequestErrorLog,
+    ) -> Self {
+        Self {
+            listener_sockets: listener_sockets.into_iter().collect(),
+            concurrency_limit: RequestConcurrencyLimit::one(),
+            request_error_log,
+            runtime: Arc::new(runtime),
+        }
+    }
+
+    pub fn with_concurrency_limit(mut self, concurrency_limit: RequestConcurrencyLimit) -> Self {
+        self.concurrency_limit = concurrency_limit;
+        self
+    }
+
+    pub fn listener_sockets(&self) -> &[ActorListenerSocket<Runtime::Listener>] {
+        &self.listener_sockets
+    }
+
+    pub async fn bind(self) -> Result<ActorBoundMultiListenerDaemon<Runtime>, ActorListenerError> {
+        let mut listeners = Vec::new();
+        for listener_socket in self.listener_sockets {
+            let socket_path = listener_socket.socket_path;
+            let unix_listener =
+                ActorBoundSocketPath::new(&socket_path, listener_socket.socket_mode).bind()?;
+            let request_gate = RequestGate::new(self.concurrency_limit).start().await;
+            listeners.push(ActorBoundListener::new(
+                listener_socket.listener,
+                socket_path,
+                unix_listener,
+                request_gate,
+            ));
+        }
+        Ok(ActorBoundMultiListenerDaemon {
+            listeners,
+            request_error_log: self.request_error_log,
+            runtime: self.runtime,
+        })
+    }
+
+    pub async fn run(self) -> Result<(), ActorMultiListenerDaemonError<Runtime::Error>> {
+        let daemon = self
+            .bind()
+            .await
+            .map_err(ActorMultiListenerDaemonError::Listener)?;
+        daemon.run().await
     }
 }
 
@@ -428,6 +591,152 @@ where
             .await
             .map_err(ActorSingleListenerDaemonError::Listener)?;
         daemon.run().await
+    }
+}
+
+impl<Runtime> ActorBoundMultiListenerDaemon<Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime,
+{
+    pub fn runtime(&self) -> &Runtime {
+        self.runtime.as_ref()
+    }
+
+    pub fn listener_count(&self) -> usize {
+        self.listeners.len()
+    }
+
+    pub async fn start(&self) -> Result<(), Runtime::Error> {
+        self.runtime.start().await
+    }
+
+    pub async fn stop(&self) -> Result<(), Runtime::Error> {
+        for listener in &self.listeners {
+            listener.request_gate().stop_gracefully().await.ok();
+        }
+        for listener in &self.listeners {
+            listener.request_gate().wait_for_shutdown().await;
+        }
+        self.runtime.stop().await
+    }
+
+    pub async fn serve_next_connection_at(&self, index: usize) -> Result<(), ActorListenerError> {
+        let Some(listener) = self.listeners.get(index) else {
+            return Err(ActorListenerError::ListenerIndexOutOfRange {
+                index,
+                listener_count: self.listeners.len(),
+            });
+        };
+        let connection = self
+            .accepted_connection(listener, listener.accept_connection().await?)
+            .await?;
+        self.spawn_connection(listener.listener().clone(), connection);
+        Ok(())
+    }
+
+    pub async fn run(self) -> Result<(), ActorMultiListenerDaemonError<Runtime::Error>> {
+        self.start()
+            .await
+            .map_err(ActorMultiListenerDaemonError::Start)?;
+        let (daemon, serve_result) = self.serve_connections().await;
+        let stop_result = daemon.stop().await;
+        match (serve_result, stop_result) {
+            (Err(error), _) => Err(ActorMultiListenerDaemonError::Listener(error)),
+            (Ok(()), Err(error)) => Err(ActorMultiListenerDaemonError::Stop(error)),
+            (Ok(()), Ok(())) => Ok(()),
+        }
+    }
+
+    async fn serve_connections(
+        self,
+    ) -> (
+        ActorStoppedMultiListenerDaemon<Runtime>,
+        Result<(), ActorListenerError>,
+    ) {
+        let request_error_log = self.request_error_log.clone();
+        let runtime = self.runtime.clone();
+        let request_gates = self
+            .listeners
+            .iter()
+            .map(|listener| listener.request_gate().clone())
+            .collect::<Vec<_>>();
+        let mut tasks = tokio::task::JoinSet::new();
+
+        for listener in self.listeners {
+            let listener_task =
+                ActorListenerTask::new(listener, request_error_log.clone(), runtime.clone());
+            tasks.spawn(async move { listener_task.serve_connections().await });
+        }
+
+        while let Some(result) = tasks.join_next().await {
+            match result {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => {
+                    tasks.abort_all();
+                    let daemon = ActorStoppedMultiListenerDaemon::new(
+                        request_gates,
+                        request_error_log,
+                        runtime,
+                    );
+                    return (daemon, Err(error));
+                }
+                Err(error) => {
+                    tasks.abort_all();
+                    let daemon = ActorStoppedMultiListenerDaemon::new(
+                        request_gates,
+                        request_error_log,
+                        runtime,
+                    );
+                    return (
+                        daemon,
+                        Err(ActorListenerError::ListenerTask {
+                            detail: error.to_string(),
+                        }),
+                    );
+                }
+            }
+        }
+
+        (
+            ActorStoppedMultiListenerDaemon::new(request_gates, request_error_log, runtime),
+            Ok(()),
+        )
+    }
+
+    async fn accepted_connection(
+        &self,
+        listener: &ActorBoundListener<Runtime::Listener>,
+        stream: TokioUnixStream,
+    ) -> Result<AcceptedConnection, ActorListenerError> {
+        let context = ConnectionContext::from_tokio_stream(&stream)?;
+        let permit = self.acquire_permit(listener).await?;
+        Ok(AcceptedConnection::new(stream, context, permit))
+    }
+
+    async fn acquire_permit(
+        &self,
+        listener: &ActorBoundListener<Runtime::Listener>,
+    ) -> Result<RequestPermit, ActorListenerError> {
+        listener
+            .request_gate()
+            .ask(AcquireRequestPermit::new("accepted-connection"))
+            .await
+            .map_err(|error| ActorListenerError::RequestGate {
+                detail: error.to_string(),
+            })
+    }
+
+    fn spawn_connection(&self, listener: Runtime::Listener, connection: AcceptedConnection) {
+        let runtime = self.runtime.clone();
+        let request_error_log = self.request_error_log.clone();
+        tokio::spawn(async move {
+            if let Err(error) = runtime
+                .handle_connection(listener.clone(), connection)
+                .await
+            {
+                request_error_log.report_for_listener(&listener, &error);
+            }
+        });
     }
 }
 
@@ -504,9 +813,131 @@ where
     }
 }
 
+impl<Runtime> ActorStoppedMultiListenerDaemon<Runtime> {
+    fn new(
+        request_gates: Vec<ActorRef<RequestGate>>,
+        request_error_log: RequestErrorLog,
+        runtime: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            request_gates,
+            _request_error_log: request_error_log,
+            runtime,
+        }
+    }
+}
+
+impl<Runtime> ActorStoppedMultiListenerDaemon<Runtime>
+where
+    Runtime: ActorMultiConnectionRuntime,
+{
+    async fn stop(&self) -> Result<(), Runtime::Error> {
+        for request_gate in &self.request_gates {
+            request_gate.stop_gracefully().await.ok();
+        }
+        for request_gate in &self.request_gates {
+            request_gate.wait_for_shutdown().await;
+        }
+        self.runtime.stop().await
+    }
+}
+
+impl<Listener> ActorBoundListener<Listener> {
+    fn new(
+        listener: Listener,
+        socket_path: PathBuf,
+        unix_listener: TokioUnixListener,
+        request_gate: ActorRef<RequestGate>,
+    ) -> Self {
+        Self {
+            listener,
+            _socket_file: ActorBoundSocketFile::new(socket_path),
+            unix_listener,
+            request_gate,
+        }
+    }
+
+    fn listener(&self) -> &Listener {
+        &self.listener
+    }
+
+    fn request_gate(&self) -> &ActorRef<RequestGate> {
+        &self.request_gate
+    }
+
+    async fn accept_connection(&self) -> Result<TokioUnixStream, ActorListenerError> {
+        let (stream, _) = self.unix_listener.accept().await?;
+        Ok(stream)
+    }
+}
+
+impl<Listener, Runtime> ActorListenerTask<Listener, Runtime>
+where
+    Listener: Clone + Display + Send + Sync + 'static,
+    Runtime: ActorMultiConnectionRuntime<Listener = Listener>,
+{
+    fn new(
+        listener: ActorBoundListener<Listener>,
+        request_error_log: RequestErrorLog,
+        runtime: Arc<Runtime>,
+    ) -> Self {
+        Self {
+            listener,
+            request_error_log,
+            runtime,
+        }
+    }
+
+    async fn serve_connections(self) -> Result<(), ActorListenerError> {
+        loop {
+            self.serve_next_connection().await?;
+        }
+    }
+
+    async fn serve_next_connection(&self) -> Result<(), ActorListenerError> {
+        let listener = self.listener.listener().clone();
+        let stream = self.listener.accept_connection().await?;
+        let connection = self.accepted_connection(stream).await?;
+        self.spawn_connection(listener, connection);
+        Ok(())
+    }
+
+    async fn accepted_connection(
+        &self,
+        stream: TokioUnixStream,
+    ) -> Result<AcceptedConnection, ActorListenerError> {
+        let context = ConnectionContext::from_tokio_stream(&stream)?;
+        let permit = self.acquire_permit().await?;
+        Ok(AcceptedConnection::new(stream, context, permit))
+    }
+
+    async fn acquire_permit(&self) -> Result<RequestPermit, ActorListenerError> {
+        self.listener
+            .request_gate()
+            .ask(AcquireRequestPermit::new("accepted-connection"))
+            .await
+            .map_err(|error| ActorListenerError::RequestGate {
+                detail: error.to_string(),
+            })
+    }
+
+    fn spawn_connection(&self, listener: Listener, connection: AcceptedConnection) {
+        let runtime = self.runtime.clone();
+        let request_error_log = self.request_error_log.clone();
+        tokio::spawn(async move {
+            if let Err(error) = runtime
+                .handle_connection(listener.clone(), connection)
+                .await
+            {
+                request_error_log.report_for_listener(&listener, &error);
+            }
+        });
+    }
+}
+
 impl<RuntimeError> std::fmt::Display for ActorSingleListenerDaemonError<RuntimeError>
 where
-    RuntimeError: std::fmt::Display,
+    RuntimeError: Display,
 {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -517,7 +948,43 @@ where
     }
 }
 
+impl<RuntimeError> Display for ActorMultiListenerDaemonError<RuntimeError>
+where
+    RuntimeError: Display,
+{
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Listener(error) => write!(formatter, "{error}"),
+            Self::Start(error) => {
+                write!(
+                    formatter,
+                    "actor multi-listener runtime start error: {error}"
+                )
+            }
+            Self::Stop(error) => {
+                write!(
+                    formatter,
+                    "actor multi-listener runtime stop error: {error}"
+                )
+            }
+        }
+    }
+}
+
 impl<RuntimeError> Error for ActorSingleListenerDaemonError<RuntimeError>
+where
+    RuntimeError: Error + 'static,
+{
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Listener(error) => Some(error),
+            Self::Start(error) => Some(error),
+            Self::Stop(error) => Some(error),
+        }
+    }
+}
+
+impl<RuntimeError> Error for ActorMultiListenerDaemonError<RuntimeError>
 where
     RuntimeError: Error + 'static,
 {
@@ -743,6 +1210,26 @@ mod tests {
     enum CountingConnectionError {
         #[error("connection IO error: {0}")]
         Io(#[from] std::io::Error),
+
+        #[error("test release channel closed")]
+        ReleaseClosed,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum ActorRuntimeTestListener {
+        Ordinary,
+        Meta,
+    }
+
+    #[derive(Clone, Debug)]
+    struct RoutingMultiConnectionRuntime {
+        events: Arc<tokio::sync::Mutex<Vec<ActorRuntimeTestListener>>>,
+    }
+
+    #[derive(Debug)]
+    struct BlockingMultiConnectionRuntime {
+        ordinary_started_sender: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+        ordinary_release_receiver: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
     }
 
     impl CountingConnectionRuntime {
@@ -756,6 +1243,66 @@ mod tests {
 
         fn peak_request_count(&self) -> usize {
             self.peak_request_count.load(Ordering::SeqCst)
+        }
+    }
+
+    impl ActorRuntimeTestListener {
+        fn response_offset(self) -> u8 {
+            match self {
+                Self::Ordinary => 10,
+                Self::Meta => 20,
+            }
+        }
+    }
+
+    impl Display for ActorRuntimeTestListener {
+        fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Ordinary => formatter.write_str("ordinary"),
+                Self::Meta => formatter.write_str("meta"),
+            }
+        }
+    }
+
+    impl RoutingMultiConnectionRuntime {
+        fn new() -> Self {
+            Self {
+                events: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            }
+        }
+
+        async fn events(&self) -> Vec<ActorRuntimeTestListener> {
+            self.events.lock().await.clone()
+        }
+    }
+
+    impl BlockingMultiConnectionRuntime {
+        fn new(
+            ordinary_started_sender: tokio::sync::oneshot::Sender<()>,
+            ordinary_release_receiver: tokio::sync::oneshot::Receiver<()>,
+        ) -> Self {
+            Self {
+                ordinary_started_sender: tokio::sync::Mutex::new(Some(ordinary_started_sender)),
+                ordinary_release_receiver: tokio::sync::Mutex::new(Some(ordinary_release_receiver)),
+            }
+        }
+
+        async fn wait_for_release(&self) -> Result<(), CountingConnectionError> {
+            let release_receiver = self
+                .ordinary_release_receiver
+                .lock()
+                .await
+                .take()
+                .expect("ordinary release receiver is present");
+            release_receiver
+                .await
+                .map_err(|_| CountingConnectionError::ReleaseClosed)
+        }
+
+        async fn record_ordinary_start(&self) {
+            if let Some(sender) = self.ordinary_started_sender.lock().await.take() {
+                let _ = sender.send(());
+            }
         }
     }
 
@@ -777,6 +1324,54 @@ mod tests {
                 .write_all(&[byte[0].saturating_add(1)])
                 .await?;
             self.live_request_count.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    impl ActorMultiConnectionRuntime for RoutingMultiConnectionRuntime {
+        type Listener = ActorRuntimeTestListener;
+        type Error = CountingConnectionError;
+
+        async fn handle_connection(
+            &self,
+            listener: Self::Listener,
+            mut connection: AcceptedConnection,
+        ) -> Result<(), Self::Error> {
+            self.events.lock().await.push(listener);
+            let mut byte = [0_u8; 1];
+            connection.stream_mut().read_exact(&mut byte).await?;
+            connection
+                .stream_mut()
+                .write_all(&[byte[0].saturating_add(listener.response_offset())])
+                .await?;
+            Ok(())
+        }
+    }
+
+    impl ActorMultiConnectionRuntime for BlockingMultiConnectionRuntime {
+        type Listener = ActorRuntimeTestListener;
+        type Error = CountingConnectionError;
+
+        async fn handle_connection(
+            &self,
+            listener: Self::Listener,
+            mut connection: AcceptedConnection,
+        ) -> Result<(), Self::Error> {
+            let mut byte = [0_u8; 1];
+            connection.stream_mut().read_exact(&mut byte).await?;
+
+            match listener {
+                ActorRuntimeTestListener::Ordinary => {
+                    self.record_ordinary_start().await;
+                    self.wait_for_release().await?;
+                }
+                ActorRuntimeTestListener::Meta => {}
+            }
+
+            connection
+                .stream_mut()
+                .write_all(&[byte[0].saturating_add(listener.response_offset())])
+                .await?;
             Ok(())
         }
     }
@@ -869,5 +1464,150 @@ mod tests {
         }
 
         assert!(!socket_path.exists());
+    }
+
+    #[tokio::test]
+    async fn actor_multi_listener_daemon_routes_connections_by_socket() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let ordinary_socket_path = directory.path().join("ordinary.sock");
+        let meta_socket_path = directory.path().join("meta.sock");
+        let runtime = RoutingMultiConnectionRuntime::new();
+        let observed_runtime = runtime.clone();
+        let listener_sockets = [
+            ActorListenerSocket::new(ActorRuntimeTestListener::Ordinary, &ordinary_socket_path),
+            ActorListenerSocket::new(ActorRuntimeTestListener::Meta, &meta_socket_path),
+        ];
+        let daemon = ActorMultiListenerDaemon::new(
+            listener_sockets,
+            runtime,
+            RequestErrorLog::new("actor-test"),
+        )
+        .with_concurrency_limit(RequestConcurrencyLimit::new(2))
+        .bind()
+        .await
+        .expect("bind actor multi listener");
+
+        let ordinary_client =
+            tokio::spawn(ActorRuntimeTestClient::new(&ordinary_socket_path, 1).run());
+        daemon
+            .serve_next_connection_at(0)
+            .await
+            .expect("serve ordinary connection");
+
+        let meta_client = tokio::spawn(ActorRuntimeTestClient::new(&meta_socket_path, 1).run());
+        daemon
+            .serve_next_connection_at(1)
+            .await
+            .expect("serve meta connection");
+
+        let ordinary_response = ordinary_client
+            .await
+            .expect("ordinary client joins")
+            .expect("ordinary response");
+        let meta_response = meta_client
+            .await
+            .expect("meta client joins")
+            .expect("meta response");
+
+        assert_eq!(ordinary_response, [11]);
+        assert_eq!(meta_response, [21]);
+        assert_eq!(
+            observed_runtime.events().await,
+            [
+                ActorRuntimeTestListener::Ordinary,
+                ActorRuntimeTestListener::Meta
+            ]
+        );
+        daemon.stop().await.expect("stop actor multi listener");
+    }
+
+    #[tokio::test]
+    async fn actor_multi_listener_accepts_meta_while_ordinary_handler_waits() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let ordinary_socket_path = directory.path().join("ordinary.sock");
+        let meta_socket_path = directory.path().join("meta.sock");
+        let (ordinary_started_sender, ordinary_started_receiver) = tokio::sync::oneshot::channel();
+        let (ordinary_release_sender, ordinary_release_receiver) = tokio::sync::oneshot::channel();
+        let listener_sockets = [
+            ActorListenerSocket::new(ActorRuntimeTestListener::Ordinary, &ordinary_socket_path),
+            ActorListenerSocket::new(ActorRuntimeTestListener::Meta, &meta_socket_path),
+        ];
+        let daemon = ActorMultiListenerDaemon::new(
+            listener_sockets,
+            BlockingMultiConnectionRuntime::new(ordinary_started_sender, ordinary_release_receiver),
+            RequestErrorLog::new("actor-test"),
+        )
+        .bind()
+        .await
+        .expect("bind actor multi listener");
+        let server = tokio::spawn(daemon.run());
+
+        let ordinary_client =
+            tokio::spawn(ActorRuntimeTestClient::new(&ordinary_socket_path, 7).run());
+        tokio::time::timeout(Duration::from_millis(200), ordinary_started_receiver)
+            .await
+            .expect("ordinary handler starts")
+            .expect("ordinary start signal");
+
+        let meta_response = tokio::time::timeout(
+            Duration::from_millis(200),
+            ActorRuntimeTestClient::new(&meta_socket_path, 3).run(),
+        )
+        .await
+        .expect("meta completes while ordinary waits")
+        .expect("meta response");
+        assert_eq!(meta_response, [23]);
+
+        ordinary_release_sender
+            .send(())
+            .expect("release ordinary handler");
+        let ordinary_response = ordinary_client
+            .await
+            .expect("ordinary client joins")
+            .expect("ordinary response");
+        assert_eq!(ordinary_response, [17]);
+
+        server.abort();
+        let _ = server.await;
+    }
+
+    #[tokio::test]
+    async fn actor_multi_listener_socket_modes_and_cleanup_apply_per_socket() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let ordinary_socket_path = directory.path().join("ordinary.sock");
+        let meta_socket_path = directory.path().join("meta.sock");
+        {
+            let listener_sockets = [
+                ActorListenerSocket::new(ActorRuntimeTestListener::Ordinary, &ordinary_socket_path)
+                    .with_socket_mode(SocketMode::new(0o600)),
+                ActorListenerSocket::new(ActorRuntimeTestListener::Meta, &meta_socket_path)
+                    .with_socket_mode(SocketMode::new(0o660)),
+            ];
+            let _daemon = ActorMultiListenerDaemon::new(
+                listener_sockets,
+                RoutingMultiConnectionRuntime::new(),
+                RequestErrorLog::new("actor-test"),
+            )
+            .bind()
+            .await
+            .expect("bind actor multi listener");
+
+            let ordinary_mode = std::fs::metadata(&ordinary_socket_path)
+                .expect("ordinary metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+            let meta_mode = std::fs::metadata(&meta_socket_path)
+                .expect("meta metadata")
+                .permissions()
+                .mode()
+                & 0o777;
+
+            assert_eq!(ordinary_mode, 0o600);
+            assert_eq!(meta_mode, 0o660);
+        }
+
+        assert!(!ordinary_socket_path.exists());
+        assert!(!meta_socket_path.exists());
     }
 }
