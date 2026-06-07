@@ -393,24 +393,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
-name = "schema"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/schema.git?branch=main#bfe4ff40a1dca39cbc55f8cd5785a06ff2497abd"
-dependencies = [
- "nota-codec",
-]
-
-[[package]]
-name = "schema-rust"
-version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#d61ebf25997c47c997c0dce1d576f870e3e8383c"
-dependencies = [
- "proc-macro2",
- "quote",
- "schema",
-]
-
-[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -461,7 +443,7 @@ dependencies = [
 [[package]]
 name = "signal-frame"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#d61ebf25997c47c997c0dce1d576f870e3e8383c"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#ed066bcce411faf4cb4c7e8aad45cf72f8c9aa9e"
 dependencies = [
  "nota-codec",
  "paste",
@@ -473,13 +455,11 @@ dependencies = [
 [[package]]
 name = "signal-frame-macros"
 version = "0.1.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#d61ebf25997c47c997c0dce1d576f870e3e8383c"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#ed066bcce411faf4cb4c7e8aad45cf72f8c9aa9e"
 dependencies = [
  "nota-codec",
  "proc-macro2",
  "quote",
- "schema",
- "schema-rust",
  "syn",
 ]
 
