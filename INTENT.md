@@ -85,16 +85,18 @@ hand-written action loop that applies storage, observes storage, runs effects,
 continues, and checks a local budget. `Runner` owns that loop and the typed
 continuation budget; generated glue projects each component's typed
 `NexusAction` into the fixed `NextStep` shape. Component authors implement the
-three plane engines, the effect handler, and the budget-exhausted reply. The
-adapter that bundles those methods for `RunnerEngines` is generated.
+three plane engines, the async effect handler, and the budget-exhausted reply.
+SEMA writes, SEMA reads, and effects are awaited runner steps, because storage
+and external effects can be actor messages, database IO, or child-process work.
+The adapter that bundles those methods for `RunnerEngines` is generated.
 
 The ownership boundary for the runner is precise, so a reader is not misled
 about who owns what. `triad-runtime` owns ONLY the generic recursive runner
-machinery: `Runner`, `Runner::drive`, the `NextStep` five-outcome enum, the
+machinery: `Runner`, async `Runner::drive`, the `NextStep` five-outcome enum, the
 `RunnerEngines` role trait, and the typed `ContinuationLimit` /
 `ContinuationBudget` / `ContinuationExhausted` budget. The per-component runner
 GLUE — the default `NexusEngine::execute` method that constructs a `Runner`,
-builds the component's `RunnerEngines` adapter, calls `Runner::drive`, and wraps
+builds the component's `RunnerEngines` adapter, awaits `Runner::drive`, and wraps
 the reply back into a `NexusAction` — is NOT owned by `triad-runtime`. That glue
 is schema-emitted by `schema-rust-next` into each component crate (in `spirit`
 it lives in the generated `src/schema/nexus.rs`). `triad-runtime` supplies the

@@ -16,6 +16,8 @@ enum TestWork {
     AfterEffect,
     Continue,
     Loop,
+    DelayedEffect,
+    AfterDelayedEffect,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,6 +39,7 @@ struct TestSemaRead {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct TestEffect {
     label: &'static str,
+    delayed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -58,7 +61,17 @@ impl TestSemaRead {
 
 impl TestEffect {
     fn new(label: &'static str) -> Self {
-        Self { label }
+        Self {
+            label,
+            delayed: false,
+        }
+    }
+
+    fn delayed(label: &'static str) -> Self {
+        Self {
+            label,
+            delayed: true,
+        }
     }
 }
 
@@ -102,22 +115,29 @@ impl RunnerEngines for TestEngines {
             TestWork::AfterRead | TestWork::Effect => {
                 NextStep::RunEffect(TestEffect::new("effect"))
             }
+            TestWork::DelayedEffect => NextStep::RunEffect(TestEffect::delayed("delayed-effect")),
             TestWork::AfterEffect | TestWork::Continue => NextStep::Continue(TestWork::ReplyNow),
+            TestWork::AfterDelayedEffect => NextStep::Reply(TestReply::Done),
             TestWork::Loop => NextStep::Continue(TestWork::Loop),
         }
     }
 
-    fn apply_sema_write(&mut self, write: Self::SemaWrite) -> Self::Work {
+    async fn apply_sema_write(&mut self, write: Self::SemaWrite) -> Self::Work {
         self.push_action(write.label);
         TestWork::AfterWrite
     }
 
-    fn observe_sema_read(&self, read: Self::SemaRead) -> Self::Work {
+    async fn observe_sema_read(&mut self, read: Self::SemaRead) -> Self::Work {
         self.push_shared_action(read.label);
         TestWork::AfterRead
     }
 
-    fn run_effect(&mut self, effect: Self::Effect) -> Self::Work {
+    async fn run_effect(&mut self, effect: Self::Effect) -> Self::Work {
+        if effect.delayed {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            self.push_action(effect.label);
+            return TestWork::AfterDelayedEffect;
+        }
         self.push_action(effect.label);
         TestWork::AfterEffect
     }
@@ -128,38 +148,40 @@ impl RunnerEngines for TestEngines {
     }
 }
 
-#[test]
-fn runner_returns_direct_reply_without_spending_budget() {
+#[tokio::test]
+async fn runner_returns_direct_reply_without_spending_budget() {
     let runner = Runner::new(ContinuationLimit::new(0));
     let mut engines = TestEngines::default();
 
-    let reply = runner.drive(&mut engines, TestWork::ReplyNow);
+    let reply = runner.drive(&mut engines, TestWork::ReplyNow).await;
 
     assert_eq!(reply, TestReply::Done);
     assert!(engines.cloned_actions().is_empty());
 }
 
-#[test]
-fn runner_drives_all_non_reply_paths_until_reply() {
+#[tokio::test]
+async fn runner_drives_all_non_reply_paths_until_reply() {
     let runner = Runner::new(ContinuationLimit::new(4));
     let mut engines = TestEngines::default();
 
-    let reply = runner.drive(&mut engines, TestWork::Write);
+    let reply = runner.drive(&mut engines, TestWork::Write).await;
 
     assert_eq!(reply, TestReply::Done);
     assert_eq!(engines.cloned_actions(), ["write", "read", "effect"]);
 }
 
-#[test]
-fn runner_accepts_each_non_reply_entry_shape() {
+#[tokio::test]
+async fn runner_accepts_each_non_reply_entry_shape() {
     let runner = Runner::new(ContinuationLimit::new(3));
     let mut read_engines = TestEngines::default();
     let mut effect_engines = TestEngines::default();
     let mut continue_engines = TestEngines::default();
 
-    let read_reply = runner.drive(&mut read_engines, TestWork::Read);
-    let effect_reply = runner.drive(&mut effect_engines, TestWork::Effect);
-    let continue_reply = runner.drive(&mut continue_engines, TestWork::Continue);
+    let read_reply = runner.drive(&mut read_engines, TestWork::Read).await;
+    let effect_reply = runner.drive(&mut effect_engines, TestWork::Effect).await;
+    let continue_reply = runner
+        .drive(&mut continue_engines, TestWork::Continue)
+        .await;
 
     assert_eq!(read_reply, TestReply::Done);
     assert_eq!(effect_reply, TestReply::Done);
@@ -169,12 +191,12 @@ fn runner_accepts_each_non_reply_entry_shape() {
     assert!(continue_engines.cloned_actions().is_empty());
 }
 
-#[test]
-fn runner_stops_before_dispatching_action_past_budget() {
+#[tokio::test]
+async fn runner_stops_before_dispatching_action_past_budget() {
     let runner = Runner::new(ContinuationLimit::new(2));
     let mut engines = TestEngines::default();
 
-    let reply = runner.drive(&mut engines, TestWork::Write);
+    let reply = runner.drive(&mut engines, TestWork::Write).await;
 
     let TestReply::Exhausted(exhausted) = reply else {
         panic!("expected budget exhaustion reply");
@@ -185,12 +207,12 @@ fn runner_stops_before_dispatching_action_past_budget() {
     assert_eq!(engines.cloned_actions(), ["write", "read", "exhausted"]);
 }
 
-#[test]
-fn runner_exhausts_continue_loop_without_plane_dispatch() {
+#[tokio::test]
+async fn runner_exhausts_continue_loop_without_plane_dispatch() {
     let runner = Runner::new(ContinuationLimit::new(2));
     let mut engines = TestEngines::default();
 
-    let reply = runner.drive(&mut engines, TestWork::Loop);
+    let reply = runner.drive(&mut engines, TestWork::Loop).await;
 
     let TestReply::Exhausted(exhausted) = reply else {
         panic!("expected budget exhaustion reply");
@@ -199,6 +221,17 @@ fn runner_exhausts_continue_loop_without_plane_dispatch() {
     assert_eq!(exhausted.completed_step_count(), 2);
     assert_eq!(exhausted.attempted_step_count(), 3);
     assert_eq!(engines.cloned_actions(), ["exhausted"]);
+}
+
+#[tokio::test]
+async fn runner_awaits_effect_continuation_before_replying() {
+    let runner = Runner::new(ContinuationLimit::new(1));
+    let mut engines = TestEngines::default();
+
+    let reply = runner.drive(&mut engines, TestWork::DelayedEffect).await;
+
+    assert_eq!(reply, TestReply::Done);
+    assert_eq!(engines.cloned_actions(), ["delayed-effect"]);
 }
 
 #[test]

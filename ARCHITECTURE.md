@@ -97,7 +97,7 @@ its typed binary startup record.
 `Runner` owns the shared recursive Nexus loop. Component code does not
 hand-write the cycle from a Nexus action into SEMA writes, SEMA reads, effects,
 or another Nexus work item. Instead, generated glue projects the component's
-typed action enum into `NextStep`, and `Runner::drive` dispatches the fixed
+typed action enum into `NextStep`, and async `Runner::drive` dispatches the fixed
 five-outcome shape:
 
 - `Reply` exits to Signal;
@@ -112,7 +112,9 @@ the library loop. It is deliberately typed over each component's generated
 payloads; the runtime does not erase plane identity or invent component
 meaning. The adapter is generated glue, not an author-written fourth engine.
 Component authors still implement the real Signal, Nexus, and SEMA behavior
-plus the effect handler and budget-exhausted reply.
+plus the async effect handler and budget-exhausted reply. SEMA writes, SEMA
+reads, and effects are awaited runner steps so database work, actor messages,
+and child processes are not disguised as synchronous callbacks.
 
 The fixed five-outcome loop is mechanics, not feature vocabulary. If a
 component adds a computed operation, a result filter, a conditional write, or a
@@ -130,14 +132,14 @@ The default limit is 32 non-reply steps.
 ### Runner ownership and the emitted daemon entry
 
 The ownership line is exact. `triad-runtime` owns the generic recursive runner
-and nothing component-specific: `Runner`, `Runner::drive`, the `NextStep`
+and nothing component-specific: `Runner`, async `Runner::drive`, the `NextStep`
 five-outcome enum, the `RunnerEngines` role trait, and the typed
 `ContinuationLimit` / `ContinuationBudget` / `ContinuationExhausted` budget.
 
 The per-component runner GLUE is NOT owned by `triad-runtime`. The default
 `NexusEngine::execute` method — which constructs a `Runner` from the component's
 `continuation_limit`, wraps the component engine in a `RunnerEngines` adapter,
-calls `Runner::drive`, and projects the reply back into a `NexusAction` — is
+awaits `Runner::drive`, and projects the reply back into a `NexusAction` — is
 schema-emitted by `schema-rust-next` into each component crate. In `spirit` that
 glue is the generated `src/schema/nexus.rs`. `triad-runtime` provides the loop;
 the schema provides each component's typed entry into the loop.

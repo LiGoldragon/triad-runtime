@@ -1,5 +1,7 @@
 use crate::{NexusEffectCommand, NexusWork, SemaReadInput, SemaWriteInput};
 
+use std::future::Future;
+
 const DEFAULT_CONTINUATION_LIMIT_COUNT: u32 = 32;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,11 +42,17 @@ pub trait RunnerEngines {
     where
         Self: Sized;
 
-    fn apply_sema_write(&mut self, write: Self::SemaWrite) -> Self::Work;
+    fn apply_sema_write(
+        &mut self,
+        write: Self::SemaWrite,
+    ) -> impl Future<Output = Self::Work> + Send + '_;
 
-    fn observe_sema_read(&self, read: Self::SemaRead) -> Self::Work;
+    fn observe_sema_read(
+        &mut self,
+        read: Self::SemaRead,
+    ) -> impl Future<Output = Self::Work> + Send + '_;
 
-    fn run_effect(&mut self, effect: Self::Effect) -> Self::Work;
+    fn run_effect(&mut self, effect: Self::Effect) -> impl Future<Output = Self::Work> + Send + '_;
 
     fn budget_exhausted_reply(&self, exhausted: ContinuationExhausted) -> Self::Reply;
 }
@@ -146,7 +154,11 @@ impl Runner {
         self.continuation_limit
     }
 
-    pub fn drive<Engines>(&self, engines: &mut Engines, first_work: Engines::Work) -> Engines::Reply
+    pub async fn drive<Engines>(
+        &self,
+        engines: &mut Engines,
+        first_work: Engines::Work,
+    ) -> Engines::Reply
     where
         Engines: RunnerEngines,
     {
@@ -160,19 +172,19 @@ impl Runner {
                     if let Err(exhausted) = budget.spend_next_step() {
                         return engines.budget_exhausted_reply(exhausted);
                     }
-                    work = engines.apply_sema_write(write);
+                    work = engines.apply_sema_write(write).await;
                 }
                 NextStep::SemaRead(read) => {
                     if let Err(exhausted) = budget.spend_next_step() {
                         return engines.budget_exhausted_reply(exhausted);
                     }
-                    work = engines.observe_sema_read(read);
+                    work = engines.observe_sema_read(read).await;
                 }
                 NextStep::RunEffect(effect) => {
                     if let Err(exhausted) = budget.spend_next_step() {
                         return engines.budget_exhausted_reply(exhausted);
                     }
-                    work = engines.run_effect(effect);
+                    work = engines.run_effect(effect).await;
                 }
                 NextStep::Continue(next_work) => {
                     if let Err(exhausted) = budget.spend_next_step() {
