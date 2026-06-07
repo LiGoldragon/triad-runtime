@@ -73,6 +73,20 @@ fn daemon_argument_rejects_inline_text() {
 }
 
 #[test]
+fn daemon_argument_rejects_nota_file() {
+    let directory = TempDir::new().expect("tempdir");
+    let path = directory.path().join("configuration.nota");
+    std::fs::write(&path, "(DaemonConfiguration)").expect("write input");
+    let command = ComponentCommand::from_arguments([path.display().to_string()]);
+
+    let error = command
+        .signal_file_argument()
+        .expect_err("daemon rejects a NOTA file path");
+
+    assert!(matches!(error, ArgumentError::ExpectedSignalFile));
+}
+
+#[test]
 fn component_argument_variants_are_distinct() {
     let command = ComponentCommand::from_arguments(["(Record [payload])"]);
 

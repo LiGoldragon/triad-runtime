@@ -54,8 +54,12 @@ counters or event-frame construction per daemon.
 
 Component binaries share the same single-argument rule through
 `ComponentCommand` and `ComponentArgument`. The runtime enforces the exact-one
-argument shape and classifies the edge as inline NOTA text, NOTA file, or
-signal-encoded file; component crates still parse the schema-specific value.
+argument shape, while the caller chooses the edge-specific classifier. Text
+clients use the NOTA classifier. Daemons use `signal_file_argument()` and accept
+only a signal-encoded/rkyv file path; inline NOTA text and `.nota` paths are
+rejected before component-specific decoding. Daemons do not understand NOTA
+startup or configuration text; deploy/bootstrap tools encode typed data before
+the daemon receives it. (psyche 2026-06-07, record pjvv)
 
 The recursive Nexus runner is runtime-owned. Component code should not repeat a
 hand-written action loop that applies storage, observes storage, runs effects,

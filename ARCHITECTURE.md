@@ -33,12 +33,14 @@ argv slice, verifies exactly one component argument, and classifies it as a
 
 - `InlineNota` — inline text for a CLI/user edge;
 - `NotaFile` — an existing path read as NOTA text by the component;
-- `SignalFile` — an existing path read as a signal-encoded binary by a
-  daemon or batch edge.
+- `SignalFile` — an existing non-`.nota` path read as a signal-encoded binary
+  by a daemon or batch edge.
 
 The runtime deliberately does not parse NOTA. It removes duplicated argument
 counting and path/text classification while leaving schema-specific parsing
-to each component crate.
+to each component crate. Daemon entrypoints call `signal_file_argument()`:
+inline text and `.nota` paths are rejected before the component tries to load
+its typed binary startup record.
 
 ## Runner Runtime
 

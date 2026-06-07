@@ -50,7 +50,7 @@ pub enum ArgumentError {
     #[error("expected exactly one component argument, received {count}")]
     ArgumentCount { count: usize },
 
-    #[error("expected a signal-encoded file path, received inline text")]
+    #[error("expected a signal-encoded file path")]
     ExpectedSignalFile,
 }
 
@@ -87,9 +87,14 @@ impl ComponentCommand {
     pub fn signal_file_argument(&self) -> Result<ComponentArgument, ArgumentError> {
         match self.raw_argument()? {
             RawArgument::InlineText(_) => Err(ArgumentError::ExpectedSignalFile),
-            RawArgument::FilePath(path) => Ok(ComponentArgument::SignalFile(SignalFile::new(
-                path.into_path(),
-            ))),
+            RawArgument::FilePath(path) => {
+                if path.is_nota_file() {
+                    return Err(ArgumentError::ExpectedSignalFile);
+                }
+                Ok(ComponentArgument::SignalFile(SignalFile::new(
+                    path.into_path(),
+                )))
+            }
         }
     }
 
@@ -191,6 +196,13 @@ impl SignalFile {
 impl ArgumentFilePath {
     fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
+    }
+
+    fn is_nota_file(&self) -> bool {
+        self.path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension == "nota")
     }
 
     fn into_path(self) -> PathBuf {
