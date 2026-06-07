@@ -23,6 +23,10 @@ nouns must keep actor mailboxes available while requests wait on admission,
 storage, child processes, or other effects. Long-running waits are delegated
 through actor-aware tasks and typed replies; they are not synchronous work hidden
 inside an actor handler.
+The emitted daemon should depend on runtime-owned listener and admission nouns,
+not generate socket accept loops itself: accepted connections enter as typed
+`AcceptedConnection` values carrying the Tokio stream, kernel-vouched peer
+credentials, and the held request permit.
 Reusable engine-role names are expressed as runtime traits when concrete
 component variants differ. A component still owns its generated `NexusAction`,
 `NexusWork`, `SemaWriteInput`, and sibling enums, but shared runtime code speaks

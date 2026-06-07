@@ -125,6 +125,25 @@ fn connection_context_reads_peer_credentials_of_a_connected_pair() {
     );
 }
 
+#[tokio::test]
+async fn connection_context_reads_peer_credentials_of_a_tokio_connected_pair() {
+    let (left, right) =
+        tokio::net::UnixStream::pair().expect("create a connected tokio unix socket pair");
+
+    let left_context =
+        ConnectionContext::from_tokio_stream(&left).expect("read peer credentials of the left end");
+    let right_context = ConnectionContext::from_tokio_stream(&right)
+        .expect("read peer credentials of the right end");
+
+    assert_eq!(left_context.user_id(), right_context.user_id());
+    assert_eq!(left_context.group_id(), right_context.group_id());
+    assert_ne!(
+        left_context.process_id(),
+        0,
+        "a connected in-process peer has a vouched process identifier"
+    );
+}
+
 #[test]
 fn connection_context_new_carries_the_explicit_credentials() {
     let context = ConnectionContext::new(1000, 1000, 4242);

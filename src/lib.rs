@@ -19,7 +19,9 @@ pub mod trace;
 pub mod workers;
 
 pub use actor_runtime::{
-    AcquireRequestPermit, RequestConcurrencyLimit, RequestGate, RequestGateStatus,
+    AcceptedConnection, AcquireRequestPermit, ActorBoundSingleListenerDaemon,
+    ActorConnectionRuntime, ActorListenerError, ActorSingleListenerDaemon,
+    ActorSingleListenerDaemonError, RequestConcurrencyLimit, RequestGate, RequestGateStatus,
     RequestGateStatusRequest, RequestPermit, RequestPermitError, RequestPermitPool,
 };
 pub use argument::{

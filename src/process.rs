@@ -61,6 +61,18 @@ impl ConnectionContext {
         })
     }
 
+    /// Read the kernel-vouched peer credentials of an accepted Tokio Unix
+    /// stream. Actor-native daemons use this path before they hand the stream
+    /// into an asynchronous request driver.
+    pub fn from_tokio_stream(stream: &tokio::net::UnixStream) -> std::io::Result<Self> {
+        let credentials = rustix::net::sockopt::socket_peercred(stream)?;
+        Ok(Self {
+            user_id: credentials.uid.as_raw(),
+            group_id: credentials.gid.as_raw(),
+            process_id: credentials.pid.as_raw_pid(),
+        })
+    }
+
     /// The peer's Unix user identifier (`uid`).
     pub fn user_id(&self) -> u32 {
         self.user_id

@@ -49,6 +49,15 @@ schema emitters should copy for storage and child-process effects: accept the
 typed message, update actor state, return a delegated typed reply, and let the
 slow wait happen outside the actor handler.
 
+`ActorSingleListenerDaemon` is the first actor-native listener shell. It binds a
+Tokio Unix listener, starts a `RequestGate`, and turns each accepted socket into
+an `AcceptedConnection`: the Tokio stream, `ConnectionContext` read through
+`SO_PEERCRED`, and the held `RequestPermit`. The component implements
+`ActorConnectionRuntime` on a data-bearing runtime object; that runtime handles
+`AcceptedConnection` asynchronously. The listener shell owns socket preparation,
+stale socket removal, socket-file cleanup, request admission, and request-error
+logging.
+
 ## Argument Runtime
 
 `ComponentCommand` owns the process-edge single-argument rule. It accepts an
