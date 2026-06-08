@@ -316,6 +316,15 @@ impl AcceptedConnection {
     pub fn stream_mut(&mut self) -> &mut TokioUnixStream {
         &mut self.stream
     }
+
+    /// Consume the accepted connection into its Tokio stream and peer context.
+    ///
+    /// Stream-aware generated daemons use this to split the stream, keep an
+    /// owned writer half for subscription events, and still classify the first
+    /// request by the kernel-vouched peer credentials.
+    pub fn into_parts(self) -> (TokioUnixStream, ConnectionContext) {
+        (self.stream, self.context)
+    }
 }
 
 impl RequestGate {
