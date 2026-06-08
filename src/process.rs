@@ -123,6 +123,13 @@ pub trait DaemonConfiguration {
         None
     }
 
+    /// The owner-only upgrade socket path, when the component runs a third
+    /// upgrade listener tier (the self-upgrade protocol). `None` for daemons
+    /// without an upgrade tier.
+    fn upgrade_socket_path(&self) -> Option<&Path> {
+        None
+    }
+
     /// The durable database path the engine opens at startup.
     fn database_path(&self) -> &Path;
 
