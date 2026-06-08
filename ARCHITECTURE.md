@@ -76,8 +76,8 @@ surfaces can ask the generated binder to apply `0600`/`0660` modes through
 The per-listener gate choice is deliberate. A single global gate would re-create
 the old "one concern blocks another" bug at the runtime layer: if the ordinary
 socket holds the only permit, the meta socket would wait even though its own
-actor task and authority plane are independent. Components that need a
-cross-listener global budget can add that as component policy inside their
+listener task and authority plane are separately admitted. Components that need
+a cross-listener global budget can add that as component policy inside their
 runtime; the shared shell's default backpressure boundary is the listener
 concern.
 

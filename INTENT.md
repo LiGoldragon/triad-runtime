@@ -132,10 +132,12 @@ The async task-backed multi-listener daemon shell is runtime-owned for ordinary 
 meta signal daemons. `AsyncMultiListenerDaemon` binds multiple Unix sockets,
 applies per-socket modes, isolates request errors, and routes accepted
 connections through one data-bearing runtime object with a listener identity.
-The listener accept loops are independent Tokio tasks, and each listener owns
-its own admission gate. The one runtime owner remains the component boundary for
-generated Nexus execution and SEMA single-writer semantics; components supply
-the typed ordinary/meta frame bridges and the generated Nexus/SEMA behavior.
+The listener accept loops are Tokio tasks scoped to socket admission, not
+actors and not independent decision loops. Each listener owns its own admission
+gate so working traffic cannot starve the meta socket, while the one runtime
+owner remains the component boundary for generated Nexus execution and SEMA
+single-writer semantics; components supply the typed ordinary/meta frame
+bridges and the generated Nexus/SEMA behavior.
 Socket-file cleanup also belongs to the bound daemon shell: once a bound
 single- or multi-listener daemon is dropped, its Unix socket paths are removed
 so supervised components release their ingress paths after shutdown.
