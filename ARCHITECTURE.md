@@ -26,13 +26,13 @@ configure a maximum body length by constructing `MaximumFrameLength`; the
 default accepts the full `u32` prefix range.
 
 The codec exposes both synchronous `Read` / `Write` and Tokio async
-`AsyncRead` / `AsyncWrite` methods. The async methods are the actor-native
+`AsyncRead` / `AsyncWrite` methods. The async methods are the async task-backed
 daemon path: a generated listener can stay on Tokio IO without reimplementing
 the length-prefix parser or blocking a runtime worker thread.
 
-## Actor Runtime
+## Async Runtime
 
-`actor_runtime.rs` is the Kameo/Tokio substrate for the next daemon shell. The
+`async_runtime.rs` is the Kameo/Tokio substrate for the next daemon shell. The
 first reusable primitive is request admission:
 
 - `RequestConcurrencyLimit` names the bounded concurrency dial;
@@ -49,21 +49,21 @@ schema emitters should copy for storage and child-process effects: accept the
 typed message, update actor state, return a delegated typed reply, and let the
 slow wait happen outside the actor handler.
 
-`ActorSingleListenerDaemon` is the first actor-native listener shell. It binds a
+`AsyncSingleListenerDaemon` is the first async task-backed listener shell. It binds a
 Tokio Unix listener, starts a `RequestGate`, and turns each accepted socket into
 an `AcceptedConnection`: the Tokio stream, `ConnectionContext` read through
 `SO_PEERCRED`, and the held `RequestPermit`. The component implements
-`ActorConnectionRuntime` on a data-bearing runtime object; that runtime handles
+`AsyncConnectionRuntime` on a data-bearing runtime object; that runtime handles
 `AcceptedConnection` asynchronously. The listener shell owns socket preparation,
 stale socket removal, socket-file cleanup, request admission, and request-error
 logging.
 
-`ActorMultiListenerDaemon` is the actor-native ordinary/meta listener shell. It
-binds a list of `ActorListenerSocket<Listener>` values, applies each socket's
+`AsyncMultiListenerDaemon` is the async task-backed ordinary/meta listener shell. It
+binds a list of `AsyncListenerSocket<Listener>` values, applies each socket's
 optional mode, and starts one accept task per listener. Each listener task owns
 its own `RequestGate`, so a slow or concurrency-limited ordinary request cannot
 block meta admission. Accepted streams become `AcceptedConnection` values and
-are passed to a shared data-bearing `ActorMultiConnectionRuntime` together with
+are passed to a shared data-bearing `AsyncMultiConnectionRuntime` together with
 the listener identity. Request failures are logged per listener and do not stop
 the accept loops; listener task failures remain fatal to the daemon.
 
@@ -71,7 +71,7 @@ the accept loops; listener task failures remain fatal to the daemon.
 `meta_socket_mode()` for the meta socket. The default for each is `None`, so
 older components keep their umask-derived behavior, while private daemon
 surfaces can ask the generated binder to apply `0600`/`0660` modes through
-`ActorListenerSocket` instead of reintroducing local bind/chmod code.
+`AsyncListenerSocket` instead of reintroducing local bind/chmod code.
 
 The per-listener gate choice is deliberate. A single global gate would re-create
 the old "one concern blocks another" bug at the runtime layer: if the ordinary
@@ -191,7 +191,7 @@ signal-frame transport meets the component engine.
 list of `ListenerSocket<Listener>` values, applies each socket's optional
 `SocketMode`, sets listeners nonblocking, and polls them in one synchronous
 loop. It remains only for consumers that have not yet migrated to
-`ActorMultiListenerDaemon`. New schema-emitted daemon work should not target
+`AsyncMultiListenerDaemon`. New schema-emitted daemon work should not target
 the polling shell.
 
 `MultiListenerRuntime::should_continue` is the stop boundary for supervised

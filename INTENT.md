@@ -17,7 +17,7 @@ The runtime crate is separate from schema emission. `schema-rust-next` emits
 component-specific nouns and traits; `triad-runtime` provides reusable runtime
 objects those generated surfaces can use at run time.
 
-Actor-native daemon execution is the new target shape. `triad-runtime` should
+Async task-backed daemon execution is the new target shape. `triad-runtime` should
 provide Kameo/Tokio runtime nouns that schema-emitted daemons reuse, and those
 nouns must keep actor mailboxes available while requests wait on admission,
 storage, child processes, or other effects. Long-running waits are delegated
@@ -30,8 +30,8 @@ credentials, and the held request permit.
 The emitted daemon should also apply runtime-owned socket preparation uniformly:
 the configuration surface exposes an optional working socket mode alongside
 the optional meta socket mode, and the generated binder passes those modes into
-the actor listener sockets instead of each component hand-writing chmod logic.
-Multi-listener actor daemons should admit requests per listener concern, not
+the async listener sockets instead of each component hand-writing chmod logic.
+Multi-listener async daemons should admit requests per listener concern, not
 through one global gate that lets an ordinary request starve a meta request.
 Each bound ordinary/meta socket owns its own `RequestGate`; the component
 runtime may still be shared, but waiting on one listener's concurrency budget
@@ -62,7 +62,7 @@ Shared runtime byte mechanics live here before each component hand-rolls them:
 `LengthPrefixedCodec` owns the four-byte big-endian length-prefix envelope
 used by trace and signal transports. The payload remains caller-owned binary
 data; the codec never interprets schema, NOTA, or rkyv.
-The same codec owns synchronous and Tokio async IO methods so actor-native
+The same codec owns synchronous and Tokio async IO methods so async task-backed
 listeners do not duplicate frame parsing or fall back to blocking `Read` /
 `Write` in async request drivers.
 
@@ -128,8 +128,8 @@ data-bearing component runtime. Component crates still own their typed
 configuration object, engine construction, signal-frame transport, and domain
 errors.
 
-The actor-native multi-listener daemon shell is runtime-owned for ordinary +
-meta signal daemons. `ActorMultiListenerDaemon` binds multiple Unix sockets,
+The async task-backed multi-listener daemon shell is runtime-owned for ordinary +
+meta signal daemons. `AsyncMultiListenerDaemon` binds multiple Unix sockets,
 applies per-socket modes, isolates request errors, and routes accepted
 connections through one data-bearing runtime object with a listener identity.
 The listener accept loops are independent Tokio tasks, and each listener owns
@@ -140,8 +140,8 @@ Socket-file cleanup also belongs to the bound daemon shell: once a bound
 single- or multi-listener daemon is dropped, its Unix socket paths are removed
 so supervised components release their ingress paths after shutdown.
 The older synchronous `MultiListenerDaemon` remains in the crate only as a
-migration surface for consumers not yet moved to actor-native generated daemon
-code; new schema-emitted daemon work should target the actor runtime nouns.
+migration surface for consumers not yet moved to async task-backed generated daemon
+code; new schema-emitted daemon work should target the async runtime nouns.
 
 Accepted-connection trust context is runtime-owned and emitter-wired.
 `ConnectionContext` carries kernel-vouched `SO_PEERCRED` uid/gid/pid for a Unix
@@ -154,6 +154,6 @@ component-specific trust policy.
 Deeper runtime-control machinery is deferred future runtime work. Deployment
 concurrency is a runtime concern, not public contract vocabulary. The current
 production slice is trace substrate plus reusable frame, argument, runner,
-actor-native single-listener daemon, actor-native multi-listener ordinary/meta
+async task-backed single-listener daemon, async task-backed multi-listener ordinary/meta
 daemon edges, legacy synchronous daemon compatibility, and typed streaming
 subscription mechanics.
