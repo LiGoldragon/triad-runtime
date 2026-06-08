@@ -67,6 +67,12 @@ are passed to a shared data-bearing `ActorMultiConnectionRuntime` together with
 the listener identity. Request failures are logged per listener and do not stop
 the accept loops; listener task failures remain fatal to the daemon.
 
+`DaemonConfiguration` exposes both `socket_mode()` for the working socket and
+`meta_socket_mode()` for the meta socket. The default for each is `None`, so
+older components keep their umask-derived behavior, while private daemon
+surfaces can ask the generated binder to apply `0600`/`0660` modes through
+`ActorListenerSocket` instead of reintroducing local bind/chmod code.
+
 The per-listener gate choice is deliberate. A single global gate would re-create
 the old "one concern blocks another" bug at the runtime layer: if the ordinary
 socket holds the only permit, the meta socket would wait even though its own

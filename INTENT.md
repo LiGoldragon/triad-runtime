@@ -27,6 +27,10 @@ The emitted daemon should depend on runtime-owned listener and admission nouns,
 not generate socket accept loops itself: accepted connections enter as typed
 `AcceptedConnection` values carrying the Tokio stream, kernel-vouched peer
 credentials, and the held request permit.
+The emitted daemon should also apply runtime-owned socket preparation uniformly:
+the configuration surface exposes an optional working socket mode alongside
+the optional meta socket mode, and the generated binder passes those modes into
+the actor listener sockets instead of each component hand-writing chmod logic.
 Multi-listener actor daemons should admit requests per listener concern, not
 through one global gate that lets an ordinary request starve a meta request.
 Each bound ordinary/meta socket owns its own `RequestGate`; the component

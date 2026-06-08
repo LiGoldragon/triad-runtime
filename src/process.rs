@@ -103,6 +103,13 @@ pub trait DaemonConfiguration {
     /// daemon binds at least this listener.
     fn socket_path(&self) -> &Path;
 
+    /// The file mode applied to the working signal socket. `None` leaves the
+    /// socket at the default umask-derived mode; components with private
+    /// working ingress return a concrete [`SocketMode`].
+    fn socket_mode(&self) -> Option<SocketMode> {
+        None
+    }
+
     /// The meta-signal socket path, when the component runs a second meta
     /// listener tier. `None` for single-listener daemons.
     fn meta_socket_path(&self) -> Option<&Path> {
