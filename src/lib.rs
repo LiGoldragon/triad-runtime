@@ -18,6 +18,8 @@ pub mod streaming;
 pub mod trace;
 pub mod workers;
 
+pub use kameo;
+
 pub use argument::{
     ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
 };
@@ -25,7 +27,8 @@ pub use async_runtime::{
     AcceptedConnection, AcquireRequestPermit, AsyncConnectionRuntime, AsyncListenerError,
     AsyncListenerSocket, AsyncMultiConnectionRuntime, AsyncMultiListenerDaemon,
     AsyncMultiListenerDaemonError, AsyncSingleListenerDaemon, AsyncSingleListenerDaemonError,
-    BoundAsyncMultiListenerDaemon, BoundAsyncSingleListenerDaemon, RequestConcurrencyLimit,
+    BoundAsyncMultiListenerDaemon, BoundAsyncSingleListenerDaemon, EngineRequestError,
+    RequestConcurrencyLimit,
     RequestGate, RequestGateStatus, RequestGateStatusRequest, RequestPermit, RequestPermitError,
     RequestPermitPool,
 };

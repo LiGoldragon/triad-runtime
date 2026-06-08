@@ -20,6 +20,24 @@ use thiserror::Error;
 use tokio::net::{UnixListener as TokioUnixListener, UnixStream as TokioUnixStream};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
+/// A request to a schema-emitted engine actor could not be delivered because the
+/// engine actor is not running (it panicked or was stopped). Daemons treat this
+/// as fatal; each component's `Error` provides `From<EngineRequestError>` so the
+/// generated connection spine can surface it on the component error channel.
+#[derive(Debug, Error)]
+#[error("engine actor unavailable: {detail}")]
+pub struct EngineRequestError {
+    detail: String,
+}
+
+impl EngineRequestError {
+    pub fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: detail.into(),
+        }
+    }
+}
+
 use crate::{ConnectionContext, RequestErrorLog, SocketMode};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
