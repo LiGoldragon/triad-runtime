@@ -9,7 +9,7 @@
 
 use std::{fmt::Display, os::unix::net::UnixStream, path::Path, process::ExitCode};
 
-use crate::SocketMode;
+use crate::{RequestConcurrencyLimit, SocketMode};
 
 /// The per-connection peer credentials of an accepted Unix-socket stream.
 ///
@@ -108,6 +108,13 @@ pub trait DaemonConfiguration {
     /// working ingress return a concrete [`SocketMode`].
     fn socket_mode(&self) -> Option<SocketMode> {
         None
+    }
+
+    /// The request concurrency cap applied to each listener's admission gate.
+    /// The default preserves single-request behavior for components that have
+    /// not audited long-lived requests or parallel database access.
+    fn request_concurrency_limit(&self) -> RequestConcurrencyLimit {
+        RequestConcurrencyLimit::one()
     }
 
     /// The meta-signal socket path, when the component runs a second meta
