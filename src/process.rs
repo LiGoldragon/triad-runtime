@@ -1,7 +1,7 @@
 //! Component-agnostic process-edge runtime for emitted daemons.
 //!
 //! The emitted daemon module (schema-rust-next `RustEmissionTarget::Daemon`)
-//! reads its socket layout through [`DaemonConfiguration`] and turns its top
+//! reads its socket layout through [`BindingSurface`] and turns its top
 //! `Result` into a process exit code through [`ExitReport`]. Both surfaces are
 //! deliberately free of component meaning: the trait names the uniform socket
 //! accessors every triad daemon configuration exposes, and the exit reporter
@@ -98,7 +98,7 @@ impl ConnectionContext {
 /// without the emitter naming component-specific accessor methods. Paths stay
 /// borrowed from the configuration; the optional meta and trace slots are
 /// `None` when the component does not expose those tiers.
-pub trait DaemonConfiguration {
+pub trait BindingSurface {
     /// The peer-callable working signal socket path. Required — every triad
     /// daemon binds at least this listener.
     fn socket_path(&self) -> &Path;

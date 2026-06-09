@@ -5,7 +5,7 @@ use std::{
     process::ExitCode,
 };
 
-use triad_runtime::{ConnectionContext, DaemonConfiguration, ExitReport, SocketMode};
+use triad_runtime::{ConnectionContext, BindingSurface, ExitReport, SocketMode};
 
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 
@@ -36,7 +36,7 @@ impl TestConfiguration {
     }
 }
 
-impl DaemonConfiguration for TestConfiguration {
+impl BindingSurface for TestConfiguration {
     fn socket_path(&self) -> &Path {
         &self.socket_path
     }

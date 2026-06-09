@@ -63,7 +63,7 @@ fn command_rejects_zero_or_multiple_arguments() {
 
 #[test]
 fn daemon_argument_rejects_inline_text() {
-    let command = ComponentCommand::from_arguments(["(DaemonConfiguration ...)"]);
+    let command = ComponentCommand::from_arguments(["(BindingSurface ...)"]);
 
     let error = command
         .signal_file_argument()
@@ -76,7 +76,7 @@ fn daemon_argument_rejects_inline_text() {
 fn daemon_argument_rejects_nota_file() {
     let directory = TempDir::new().expect("tempdir");
     let path = directory.path().join("configuration.nota");
-    std::fs::write(&path, "(DaemonConfiguration)").expect("write input");
+    std::fs::write(&path, "(BindingSurface)").expect("write input");
     let command = ComponentCommand::from_arguments([path.display().to_string()]);
 
     let error = command

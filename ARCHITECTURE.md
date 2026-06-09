@@ -67,7 +67,7 @@ are passed to a shared data-bearing `AsyncMultiConnectionRuntime` together with
 the listener identity. Request failures are logged per listener and do not stop
 the accept loops; listener task failures remain fatal to the daemon.
 
-`DaemonConfiguration` exposes both `socket_mode()` for the working socket and
+`BindingSurface` exposes both `socket_mode()` for the working socket and
 `meta_socket_mode()` for the meta socket. The default for each is `None`, so
 older components keep their umask-derived behavior, while private daemon
 surfaces can ask the generated binder to apply `0600`/`0660` modes through
@@ -235,7 +235,7 @@ to the subscriber connection.
 `process.rs` owns the component-agnostic process edge the emitted daemon
 module (`schema-rust-next` `RustEmissionTarget::Daemon`) reads.
 
-`DaemonConfiguration` is the uniform socket-and-storage surface a component's
+`BindingSurface` is the uniform socket-and-storage surface a component's
 hand-written `Configuration` implements: `socket_path` (the required working
 listener), `meta_socket_path` (the optional meta tier),
 `database_path`, `trace_socket_path`, and `meta_socket_mode`. The emitted
@@ -310,7 +310,7 @@ implementation scope.
 - `src/lib.rs` — crate surface.
 - `src/argument.rs` — component process-edge argument classification.
 - `src/frame.rs` — generic four-byte length-prefixed binary frame codec.
-- `src/process.rs` — component-agnostic `DaemonConfiguration` socket surface
+- `src/process.rs` — component-agnostic `BindingSurface` socket surface
   and `ExitReport` process-exit mapping for the emitted daemon module.
 - `src/daemon.rs` — reusable single-listener Unix daemon runner and lifecycle
   trait, plus multi-listener ordinary/meta daemon shell.
