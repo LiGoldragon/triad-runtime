@@ -56,8 +56,13 @@ pub struct RequestPermit {
     _permit: OwnedSemaphorePermit,
 }
 
-pub struct AcceptedConnection {
-    stream: TokioUnixStream,
+/// An admitted connection: the transport stream, the peer's trust context, and
+/// the held request permit. The stream type names the transport — Unix-socket
+/// listeners produce the default `AcceptedConnection`, the TCP listener
+/// produces `AcceptedConnection<TcpStream>` — while the carried
+/// [`ConnectionContext`] says what the transport vouches for.
+pub struct AcceptedConnection<Stream = TokioUnixStream> {
+    stream: Stream,
     context: ConnectionContext,
     _permit: RequestPermit,
 }
@@ -121,7 +126,12 @@ pub struct RequestGateStatus {
     accepted_request_count: u64,
 }
 
-pub trait AsyncConnectionRuntime: Send + Sync + 'static {
+/// The component boundary for a single-listener async daemon, generic over the
+/// transport stream. Unix-socket shells require the default
+/// `AsyncConnectionRuntime`; the TCP shell requires
+/// `AsyncConnectionRuntime<TcpStream>`. One runtime object may implement both
+/// when it serves both transports.
+pub trait AsyncConnectionRuntime<Stream = TokioUnixStream>: Send + Sync + 'static {
     type Error: Display + Send + Sync + 'static;
 
     fn start(&self) -> impl Future<Output = Result<(), Self::Error>> + Send {
@@ -134,7 +144,7 @@ pub trait AsyncConnectionRuntime: Send + Sync + 'static {
 
     fn handle_connection(
         &self,
-        connection: AcceptedConnection,
+        connection: AcceptedConnection<Stream>,
     ) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
 
@@ -318,8 +328,8 @@ impl RequestPermit {
     }
 }
 
-impl AcceptedConnection {
-    fn new(stream: TokioUnixStream, context: ConnectionContext, permit: RequestPermit) -> Self {
+impl<Stream> AcceptedConnection<Stream> {
+    pub(crate) fn new(stream: Stream, context: ConnectionContext, permit: RequestPermit) -> Self {
         Self {
             stream,
             context,
@@ -331,7 +341,7 @@ impl AcceptedConnection {
         &self.context
     }
 
-    pub fn stream_mut(&mut self) -> &mut TokioUnixStream {
+    pub fn stream_mut(&mut self) -> &mut Stream {
         &mut self.stream
     }
 
@@ -339,8 +349,8 @@ impl AcceptedConnection {
     ///
     /// Stream-aware generated daemons use this to split the stream, keep an
     /// owned writer half for subscription events, and still classify the first
-    /// request by the kernel-vouched peer credentials.
-    pub fn into_parts(self) -> (TokioUnixStream, ConnectionContext) {
+    /// request by the carried peer identity.
+    pub fn into_parts(self) -> (Stream, ConnectionContext) {
         (self.stream, self.context)
     }
 }

@@ -146,16 +146,30 @@ migration surface for consumers not yet moved to async task-backed generated dae
 code; new schema-emitted daemon work should target the async runtime nouns.
 
 Accepted-connection trust context is runtime-owned and emitter-wired.
-`ConnectionContext` carries kernel-vouched `SO_PEERCRED` uid/gid/pid for a Unix
-socket stream, using rustix's safe `socket_peercred` wrapper so runtime code
-keeps `unsafe_code = "forbid"`. `schema-rust-next` emits the working-input hook
-that receives this context; components decide what it means for provenance or
-authority. The runtime owns the credential noun and reader, not the
+`ConnectionContext` carries a typed closed peer-identity sum: a Unix-socket
+peer's kernel-vouched `SO_PEERCRED` uid/gid/pid (read with rustix's safe
+`socket_peercred` wrapper so runtime code keeps `unsafe_code = "forbid"`), or
+a TCP peer's remote socket address. No accessor pretends a TCP peer has Unix
+credentials. `schema-rust-next` emits the working-input hook that receives
+this context; components decide what it means for provenance or authority.
+The runtime owns the peer-identity nouns and readers, not the
 component-specific trust policy.
+
+Cross-host transport is a tailnet-bound TCP listener in this crate. Per Spirit
+rj9y (Decision): [Cross-host component transport for the version-control
+mirror is a tailnet-bound TCP listener in triad-runtime, reusing the
+length-prefixed frame codec, with peer identity as a typed closed sum
+distinguishing kernel-vouched Unix-socket peers from tailnet TCP peers.
+Ssh-forwarded sockets are rejected as the transport shape.]
+`TcpListenerDaemon` binds the address the caller configures — the runtime
+does not know what a tailnet is — admits connections through the same
+`RequestGate` machinery, and frames through `LengthPrefixedCodec` unchanged.
+TCP has no socket file: no modes, no stale-path cleanup; dropping the bound
+listener is the cleanup story.
 
 Deeper runtime-control machinery is deferred future runtime work. Deployment
 concurrency is a runtime concern, not public contract vocabulary. The current
 production slice is trace substrate plus reusable frame, argument, runner,
 async task-backed single-listener daemon, async task-backed multi-listener ordinary/meta
-daemon edges, legacy synchronous daemon compatibility, and typed streaming
-subscription mechanics.
+daemon edges, the tailnet-facing TCP listener edge, legacy synchronous daemon
+compatibility, and typed streaming subscription mechanics.

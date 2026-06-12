@@ -15,6 +15,7 @@ pub mod process;
 pub mod role;
 pub mod runner;
 pub mod streaming;
+pub mod tcp;
 pub mod trace;
 pub mod workers;
 
@@ -28,9 +29,8 @@ pub use async_runtime::{
     AsyncListenerSocket, AsyncMultiConnectionRuntime, AsyncMultiListenerDaemon,
     AsyncMultiListenerDaemonError, AsyncSingleListenerDaemon, AsyncSingleListenerDaemonError,
     BoundAsyncMultiListenerDaemon, BoundAsyncSingleListenerDaemon, EngineRequestError,
-    RequestConcurrencyLimit,
-    RequestGate, RequestGateStatus, RequestGateStatusRequest, RequestPermit, RequestPermitError,
-    RequestPermitPool,
+    RequestConcurrencyLimit, RequestGate, RequestGateStatus, RequestGateStatusRequest,
+    RequestPermit, RequestPermitError, RequestPermitPool,
 };
 pub use daemon::{
     BoundMultiListenerDaemon, BoundSingleListenerDaemon, DaemonRuntime, ListenerError,
@@ -39,7 +39,7 @@ pub use daemon::{
     SocketMode,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
-pub use process::{ConnectionContext, BindingSurface, ExitReport};
+pub use process::{BindingSurface, ConnectionContext, ExitReport, PeerIdentity, UnixCredentials};
 pub use role::{
     NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
     SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,
@@ -51,6 +51,7 @@ pub use streaming::{
     Subscription, SubscriptionEventPublisher, SubscriptionEventSequence, SubscriptionRegistry,
     SubscriptionToken, SubscriptionTokenIssuer,
 };
+pub use tcp::{BoundTcpListenerDaemon, TcpListenerDaemon};
 pub use trace::{
     TraceClient, TraceError, TraceEventFrame, TraceFrame, TraceLog, TraceSocketListener,
     TraceSocketPath,

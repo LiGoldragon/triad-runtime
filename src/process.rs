@@ -7,37 +7,33 @@
 //! accessors every triad daemon configuration exposes, and the exit reporter
 //! owns only the process name it prints with.
 
-use std::{fmt::Display, os::unix::net::UnixStream, path::Path, process::ExitCode};
+use std::{
+    fmt::Display, net::SocketAddr, os::unix::net::UnixStream, path::Path, process::ExitCode,
+};
 
 use crate::{RequestConcurrencyLimit, SocketMode};
 
-/// The per-connection peer credentials of an accepted Unix-socket stream.
+/// The kernel-vouched `SO_PEERCRED` credential triple of a Unix-socket peer.
 ///
-/// The schema-rust-next emitted daemon module reads these once per accepted
-/// working connection and threads them into the component's working-input hook,
-/// so a component can mint an origin (owner vs non-owner local user vs internal
-/// component instance) from the operating-system trust boundary rather than
-/// trusting payload claims.
-///
-/// The credentials are the kernel-vouched `SO_PEERCRED` triple, obtained through
-/// rustix's safe [`rustix::net::sockopt::socket_peercred`] wrapper — no raw
-/// `getsockopt` and no `unsafe` in this crate, so `triad-runtime` keeps
-/// `unsafe_code = "forbid"`. The standard library's own `UnixStream::peer_cred`
-/// is still unstable on the stable toolchain (`peer_credentials_unix_socket`),
-/// which is why the safe rustix wrapper carries this instead. `rustix` exposes a
-/// real `Pid`, so the peer process identifier is carried as a plain `i32`
-/// instead of a fake optional value.
+/// The credentials are obtained through rustix's safe
+/// [`rustix::net::sockopt::socket_peercred`] wrapper — no raw `getsockopt` and
+/// no `unsafe` in this crate, so `triad-runtime` keeps `unsafe_code = "forbid"`.
+/// The standard library's own `UnixStream::peer_cred` is still unstable on the
+/// stable toolchain (`peer_credentials_unix_socket`), which is why the safe
+/// rustix wrapper carries this instead. `rustix` exposes a real `Pid`, so the
+/// peer process identifier is carried as a plain `i32` instead of a fake
+/// optional value.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ConnectionContext {
+pub struct UnixCredentials {
     user_id: u32,
     group_id: u32,
     process_id: i32,
 }
 
-impl ConnectionContext {
-    /// Construct a connection context from explicit credentials. The
-    /// `from_stream` path is the production source; this constructor exists so
-    /// tests and in-process callers can build a context without a real socket.
+impl UnixCredentials {
+    /// Construct credentials from explicit values. The `from_stream` paths are
+    /// the production source; this constructor exists so tests and in-process
+    /// callers can build credentials without a real socket.
     pub const fn new(user_id: u32, group_id: u32, process_id: i32) -> Self {
         Self {
             user_id,
@@ -86,6 +82,110 @@ impl ConnectionContext {
     /// The peer's process identifier (`pid`).
     pub fn process_id(&self) -> i32 {
         self.process_id
+    }
+}
+
+/// The transport-level identity of an accepted peer — a closed sum.
+///
+/// A Unix-socket peer is kernel-vouched: the operating system supplies the
+/// `SO_PEERCRED` uid/gid/pid triple and no payload claim can forge it. A TCP
+/// peer carries only its remote socket address; the runtime asserts nothing
+/// stronger, and any further trust (a tailnet boundary, mutual authentication)
+/// is the deployment's and the component's concern. The sum is closed on
+/// purpose: ssh-forwarded sockets are rejected as a transport shape, so no
+/// third "forwarded" identity exists.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PeerIdentity {
+    /// A same-host Unix-socket peer with kernel-vouched credentials.
+    Unix(UnixCredentials),
+    /// A TCP peer known only by its remote socket address.
+    Tcp(SocketAddr),
+}
+
+impl PeerIdentity {
+    /// The kernel-vouched credentials, when the peer is a Unix-socket peer.
+    /// `None` for TCP peers — there is no credential to pretend to.
+    pub fn unix_credentials(&self) -> Option<&UnixCredentials> {
+        match self {
+            Self::Unix(credentials) => Some(credentials),
+            Self::Tcp(_) => None,
+        }
+    }
+
+    /// The remote socket address, when the peer is a TCP peer. `None` for
+    /// Unix-socket peers.
+    pub fn tcp_address(&self) -> Option<SocketAddr> {
+        match self {
+            Self::Unix(_) => None,
+            Self::Tcp(address) => Some(*address),
+        }
+    }
+}
+
+/// The per-connection trust context of an accepted stream.
+///
+/// The schema-rust-next emitted daemon module reads this once per accepted
+/// working connection and threads it into the component's working-input hook,
+/// so a component can mint an origin (owner vs non-owner local user vs internal
+/// component instance vs remote host) from the transport trust boundary rather
+/// than trusting payload claims. The carried [`PeerIdentity`] says exactly what
+/// the transport vouches for; the component owns the trust policy.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConnectionContext {
+    peer: PeerIdentity,
+}
+
+impl ConnectionContext {
+    /// Read the kernel-vouched peer credentials of an accepted Unix stream.
+    pub fn from_stream(stream: &UnixStream) -> std::io::Result<Self> {
+        Ok(Self::from(UnixCredentials::from_stream(stream)?))
+    }
+
+    /// Read the kernel-vouched peer credentials of an accepted Tokio Unix
+    /// stream. Async listener daemons use this path before they hand the stream
+    /// into an asynchronous request driver.
+    pub fn from_tokio_stream(stream: &tokio::net::UnixStream) -> std::io::Result<Self> {
+        Ok(Self::from(UnixCredentials::from_tokio_stream(stream)?))
+    }
+
+    /// Read the remote address of a connected Tokio TCP stream. The TCP accept
+    /// loop builds its context from the address the listener already returned;
+    /// this path serves callers holding only the stream.
+    pub fn from_tcp_stream(stream: &tokio::net::TcpStream) -> std::io::Result<Self> {
+        Ok(Self::from(stream.peer_addr()?))
+    }
+
+    /// The transport-level peer identity.
+    pub fn peer(&self) -> &PeerIdentity {
+        &self.peer
+    }
+
+    /// The kernel-vouched credentials, when the peer is a Unix-socket peer.
+    pub fn unix_credentials(&self) -> Option<&UnixCredentials> {
+        self.peer.unix_credentials()
+    }
+
+    /// The remote socket address, when the peer is a TCP peer.
+    pub fn tcp_address(&self) -> Option<SocketAddr> {
+        self.peer.tcp_address()
+    }
+}
+
+impl From<PeerIdentity> for ConnectionContext {
+    fn from(peer: PeerIdentity) -> Self {
+        Self { peer }
+    }
+}
+
+impl From<UnixCredentials> for ConnectionContext {
+    fn from(credentials: UnixCredentials) -> Self {
+        Self::from(PeerIdentity::Unix(credentials))
+    }
+}
+
+impl From<SocketAddr> for ConnectionContext {
+    fn from(address: SocketAddr) -> Self {
+        Self::from(PeerIdentity::Tcp(address))
     }
 }
 

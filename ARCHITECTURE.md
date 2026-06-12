@@ -81,6 +81,23 @@ a cross-listener global budget can add that as component policy inside their
 runtime; the shared shell's default backpressure boundary is the listener
 concern.
 
+`TcpListenerDaemon` (`src/tcp.rs`) is the cross-host sibling of the async Unix
+shells. It binds whatever TCP socket address the caller configures — the
+runtime does not know what a tailnet is; tailnet-only ingress is the deployed
+bind address — starts the same `RequestGate` admission actor, and turns each
+accepted stream into an `AcceptedConnection<TcpStream>` whose context carries
+the peer's remote address. Frames go through `LengthPrefixedCodec` unchanged.
+Socket-file concepts do not apply: there is no mode to chmod and no stale path
+to remove, and cleanup is dropping the bound listener. Ssh-forwarded sockets
+are rejected as the cross-host transport shape; the TCP listener with typed
+peer identity is the transport.
+
+`AcceptedConnection<Stream>` and `AsyncConnectionRuntime<Stream>` are generic
+over the transport stream with `tokio::net::UnixStream` as the default, so the
+Unix shells and their consumers keep the bare names while the TCP shell
+requires `AsyncConnectionRuntime<TcpStream>`. One runtime object may implement
+both instantiations when a component serves both transports.
+
 ## Argument Runtime
 
 `ComponentCommand` owns the process-edge single-argument rule. It accepts an
@@ -251,14 +268,19 @@ the component-agnostic `fn main` tail the emitted daemon calls, so the
 exit-mapping verb lives on a real noun (the process name) rather than as a
 free function re-emitted into every component.
 
-`ConnectionContext` is the trust-boundary carrier for accepted Unix-socket
-streams. The schema-rust-next emitted daemon module reads it from each accepted
-stream with rustix's safe `socket_peercred` wrapper (`SO_PEERCRED`) and passes
-it into the component working-input hook. Components that mint provenance can
-classify owner/non-owner/internal origins from kernel-vouched uid/gid/pid
-instead of trusting payload fields. `triad-runtime` keeps the context type and
-safe credential reader; the actual `handle_working_input` hook signature and
-wiring are emitted by schema-rust-next.
+`ConnectionContext` is the trust-boundary carrier for accepted streams. Inside
+it, `PeerIdentity` is a closed sum with exactly two variants: a Unix-socket
+peer carrying kernel-vouched `UnixCredentials` (the `SO_PEERCRED` uid/gid/pid
+triple, read with rustix's safe `socket_peercred` wrapper), and a TCP peer
+carrying only its remote socket address. No accessor pretends a TCP peer has
+Unix credentials — `unix_credentials()` and `tcp_address()` both return
+`Option`, and the credential accessors live on `UnixCredentials` itself. The
+schema-rust-next emitted daemon module reads the context from each accepted
+stream and passes it into the component working-input hook; components that
+mint provenance classify owner/non-owner/internal/remote origins from the
+typed peer identity instead of trusting payload fields. `triad-runtime` keeps
+the context type and safe credential reader; the actual `handle_working_input`
+hook signature and wiring are emitted by schema-rust-next.
 
 ## Trace Runtime
 
@@ -320,14 +342,20 @@ implementation scope.
   roots.
 - `src/streaming.rs` — reusable subscription token registry and typed
   `signal-frame` subscription-event publisher.
+- `src/tcp.rs` — async task-backed TCP listener shell for cross-host
+  transport.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
   and error.
 - `tests/argument.rs` — single-argument and argument-kind witnesses.
 - `tests/frame.rs` — generic length-prefix codec witnesses.
 - `tests/daemon.rs` — Unix listener preparation, lifecycle, and request-error
   isolation witnesses.
+- `tests/process.rs` — binding surface, peer-identity, and exit-report
+  witnesses.
 - `tests/runner.rs` — shared runner loop and budget witnesses.
 - `tests/streaming.rs` — token issuance, registry filtering, event sequence,
   and `signal-frame` streaming-frame witnesses.
+- `tests/tcp.rs` — loopback TCP frame round-trip, remote-address peer
+  identity, and listener-drop cleanup witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
   type.

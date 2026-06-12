@@ -1,11 +1,14 @@
 use std::{
     fmt::{Display, Formatter},
+    net::SocketAddr,
     os::unix::net::UnixStream,
     path::{Path, PathBuf},
     process::ExitCode,
 };
 
-use triad_runtime::{ConnectionContext, BindingSurface, ExitReport, SocketMode};
+use triad_runtime::{
+    BindingSurface, ConnectionContext, ExitReport, PeerIdentity, SocketMode, UnixCredentials,
+};
 
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
 
@@ -108,7 +111,8 @@ fn multi_listener_configuration_exposes_meta_and_trace_tiers() {
 fn connection_context_reads_peer_credentials_of_a_connected_pair() {
     // A connected `UnixStream` pair is two ends of the same in-process socket, so
     // both ends' peer credentials are this test process's own uid/gid. The
-    // witness: `from_stream` reads them without error and both ends agree.
+    // witness: `from_stream` reads them without error, both ends agree, and the
+    // peer identity is the kernel-vouched Unix variant.
     let (left, right) = UnixStream::pair().expect("create a connected unix socket pair");
 
     let left_context =
@@ -116,12 +120,24 @@ fn connection_context_reads_peer_credentials_of_a_connected_pair() {
     let right_context =
         ConnectionContext::from_stream(&right).expect("read peer credentials of the right end");
 
-    assert_eq!(left_context.user_id(), right_context.user_id());
-    assert_eq!(left_context.group_id(), right_context.group_id());
+    let left_credentials = left_context
+        .unix_credentials()
+        .expect("a unix peer carries kernel credentials");
+    let right_credentials = right_context
+        .unix_credentials()
+        .expect("a unix peer carries kernel credentials");
+
+    assert_eq!(left_credentials.user_id(), right_credentials.user_id());
+    assert_eq!(left_credentials.group_id(), right_credentials.group_id());
     assert_ne!(
-        left_context.process_id(),
+        left_credentials.process_id(),
         0,
         "a connected in-process peer has a vouched process identifier"
+    );
+    assert_eq!(
+        left_context.tcp_address(),
+        None,
+        "a unix peer has no remote address to pretend to"
     );
 }
 
@@ -135,22 +151,49 @@ async fn connection_context_reads_peer_credentials_of_a_tokio_connected_pair() {
     let right_context = ConnectionContext::from_tokio_stream(&right)
         .expect("read peer credentials of the right end");
 
-    assert_eq!(left_context.user_id(), right_context.user_id());
-    assert_eq!(left_context.group_id(), right_context.group_id());
+    let left_credentials = left_context
+        .unix_credentials()
+        .expect("a unix peer carries kernel credentials");
+    let right_credentials = right_context
+        .unix_credentials()
+        .expect("a unix peer carries kernel credentials");
+
+    assert_eq!(left_credentials.user_id(), right_credentials.user_id());
+    assert_eq!(left_credentials.group_id(), right_credentials.group_id());
     assert_ne!(
-        left_context.process_id(),
+        left_credentials.process_id(),
         0,
         "a connected in-process peer has a vouched process identifier"
     );
 }
 
 #[test]
-fn connection_context_new_carries_the_explicit_credentials() {
-    let context = ConnectionContext::new(1000, 1000, 4242);
+fn unix_connection_context_carries_the_explicit_credentials() {
+    let context = ConnectionContext::from(UnixCredentials::new(1000, 1000, 4242));
 
-    assert_eq!(context.user_id(), 1000);
-    assert_eq!(context.group_id(), 1000);
-    assert_eq!(context.process_id(), 4242);
+    let credentials = context
+        .unix_credentials()
+        .expect("a unix peer carries kernel credentials");
+    assert_eq!(credentials.user_id(), 1000);
+    assert_eq!(credentials.group_id(), 1000);
+    assert_eq!(credentials.process_id(), 4242);
+    assert!(matches!(context.peer(), PeerIdentity::Unix(_)));
+    assert_eq!(context.tcp_address(), None);
+}
+
+#[test]
+fn tcp_connection_context_carries_only_the_remote_address() {
+    let address: SocketAddr = "100.64.0.7:7600".parse().expect("parse socket address");
+
+    let context = ConnectionContext::from(address);
+
+    assert_eq!(context.tcp_address(), Some(address));
+    assert_eq!(
+        context.unix_credentials(),
+        None,
+        "a tcp peer never pretends to kernel-vouched credentials"
+    );
+    assert!(matches!(context.peer(), PeerIdentity::Tcp(_)));
 }
 
 #[test]
