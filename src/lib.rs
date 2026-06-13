@@ -12,6 +12,7 @@ pub mod async_runtime;
 pub mod daemon;
 pub mod frame;
 pub mod process;
+pub mod reaction;
 pub mod role;
 pub mod runner;
 pub mod streaming;
@@ -40,6 +41,7 @@ pub use daemon::{
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
 pub use process::{BindingSurface, ConnectionContext, ExitReport, PeerIdentity, UnixCredentials};
+pub use reaction::{Action, Never, Work};
 pub use role::{
     NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
     SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,

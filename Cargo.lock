@@ -714,6 +714,7 @@ name = "triad-runtime"
 version = "0.6.1"
 dependencies = [
  "kameo",
+ "nota-next",
  "rkyv",
  "rustix",
  "signal-frame",
