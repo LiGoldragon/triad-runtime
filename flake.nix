@@ -42,6 +42,13 @@
           test = craneLib.cargoTest (commonArguments // {
             inherit cargoArtifacts;
           });
+          test-nota-text = craneLib.cargoTest (commonArguments // {
+            inherit cargoArtifacts;
+            cargoTestExtraArgs = "--all-targets --features nota-text";
+          });
+          fmt = craneLib.cargoFmt {
+            src = source;
+          };
           clippy = craneLib.cargoClippy (commonArguments // {
             inherit cargoArtifacts;
             cargoClippyExtraArgs = "--all-targets --all-features -- -D warnings";
