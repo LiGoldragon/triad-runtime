@@ -12,6 +12,18 @@ mostly match typed input, decide, call the next typed interface, and return
 typed output. `triad-runtime` supports that path without becoming the owner of
 component-specific meaning.
 
+## Direction
+
+`triad-runtime` provides the reusable runtime nouns schema-emitted daemons compose. The Nexus schema is the engine's **feature catalog**: every internal feature — any computation, any filtering or condition on results, any conditional write — is declared as a Nexus verb and object in the component schema, never as inline hidden logic in this runtime library. The runner drives already-declared typed actions; it must not hide new component capability behind generic runtime code. Per Spirit record `z6qu`.
+
+Async task-backed daemon execution is the new target shape. New schema-emitted daemon work should target `AsyncSingleListenerDaemon` and `AsyncMultiListenerDaemon`; the older synchronous `SingleListenerDaemon` and `MultiListenerDaemon` remain only for consumers not yet migrated.
+
+The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runner` and awaits `Runner::drive`) is **not owned by `triad-runtime`**. That glue is schema-emitted by `schema-rust-next` into each component crate. `triad-runtime` supplies the loop; the schema supplies the per-component entry.
+
+Cross-host transport is a tailnet-bound TCP listener in this crate, reusing the length-prefixed frame codec, with peer identity as a typed closed sum distinguishing kernel-vouched Unix-socket peers from tailnet TCP peers. Ssh-forwarded sockets are rejected as the transport shape. Per Spirit `rj9y` (Decision, High).
+
+Component binaries share the single-argument rule through `ComponentCommand`. Daemons use `signal_file_argument()` and accept only a signal-encoded/rkyv file path; inline NOTA text and `.nota` paths are rejected before component-specific decoding. Per Spirit record `pjvv`.
+
 ## Frame Runtime
 
 `LengthPrefixedCodec` owns the generic binary envelope used by runtime
