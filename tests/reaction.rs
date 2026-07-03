@@ -17,14 +17,14 @@
 
 #![cfg(feature = "nota-text")]
 
-use nota_next::{NotaEncode, NotaSource};
+use nota::{NotaEncode, NotaSource};
 use triad_runtime::{Action, Never, NextStep, Work};
 
 // --- Concrete payloads, each deriving the full wire stack -------------------
 
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -38,8 +38,8 @@ struct ArrivedSignal {
 }
 
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -53,8 +53,8 @@ struct WriteOutcome {
 }
 
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -68,8 +68,8 @@ struct ReadOutcome {
 }
 
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -83,8 +83,8 @@ struct EffectOutcome {
 }
 
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -116,8 +116,8 @@ type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, 
 // fails the NOTA half of the stack just as `Never` fails the rkyv half. The
 // honest fallback payload therefore carries an explicit marker field.
 #[derive(
-    nota_next::NotaDecode,
-    nota_next::NotaEncode,
+    nota::NotaDecode,
+    nota::NotaEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -135,7 +135,7 @@ type ReadlessWork = Work<ArrivedSignal, WriteOutcome, LegAbsent, EffectOutcome>;
 // --- Proof 1: the multi-parameter generic compiles with the full stack ------
 //
 // Reaching this file at all means `Work<…>` and `Action<…>` compiled with
-// rkyv::{Archive,Serialize,Deserialize} + nota_next::{NotaDecode,NotaEncode}
+// rkyv::{Archive,Serialize,Deserialize} + nota::{NotaDecode,NotaEncode}
 // over four and five free type parameters respectively. This compile-only
 // instantiation pins it as an asserted fact.
 
