@@ -7,7 +7,8 @@ use std::{
 };
 
 use triad_runtime::{
-    BindingSurface, ConnectionContext, ExitReport, PeerIdentity, SocketMode, UnixCredentials,
+    BindingSurface, ConnectionContext, ExitReport, PeerIdentity, RuntimePathErrorKind, SocketMode,
+    SocketPathSelection, SocketPathSource, UnixCredentials,
 };
 
 const OWNER_ONLY_SOCKET_MODE: u32 = 0o600;
@@ -194,6 +195,42 @@ fn tcp_connection_context_carries_only_the_remote_address() {
         "a tcp peer never pretends to kernel-vouched credentials"
     );
     assert!(matches!(context.peer(), PeerIdentity::Tcp(_)));
+}
+
+#[test]
+fn socket_path_selection_rejects_empty_relative_and_parent_directory_values() {
+    let empty = SocketPathSelection::from_source(
+        SocketPathSource::environment_override("PERSONA_TEST_SOCKET", ""),
+        "",
+    )
+    .expect_err("empty environment socket value is rejected");
+    assert_eq!(empty.kind(), RuntimePathErrorKind::Empty);
+    assert!(format!("{empty}").contains("PERSONA_TEST_SOCKET"));
+
+    let relative = SocketPathSelection::from_default("ordinary_socket_path", "relative.sock")
+        .expect_err("relative default socket path is rejected");
+    assert_eq!(relative.kind(), RuntimePathErrorKind::Relative);
+    assert!(format!("{relative}").contains("ordinary_socket_path"));
+
+    let parent = SocketPathSelection::from_source(
+        SocketPathSource::environment_override("PERSONA_TEST_SOCKET", "/run/../bad.sock"),
+        "/run/../bad.sock",
+    )
+    .expect_err("parent-directory traversal is rejected");
+    assert_eq!(parent.kind(), RuntimePathErrorKind::ParentDirectory);
+    assert!(format!("{parent}").contains("/run/../bad.sock"));
+}
+
+#[test]
+fn socket_path_selection_preserves_source_for_valid_paths() {
+    let selection = SocketPathSelection::from_source(
+        SocketPathSource::environment_override("PERSONA_TEST_SOCKET", "/run/user/1000/test.sock"),
+        "/run/user/1000/test.sock",
+    )
+    .expect("absolute environment override is accepted");
+
+    assert_eq!(selection.as_path(), Path::new("/run/user/1000/test.sock"));
+    assert!(format!("{}", selection.source()).contains("PERSONA_TEST_SOCKET"));
 }
 
 #[test]

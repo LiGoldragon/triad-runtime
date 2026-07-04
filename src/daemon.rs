@@ -11,6 +11,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::{RuntimeSocketFile, RuntimeSocketFileError};
+
 pub trait DaemonRuntime {
     type StartError;
     type StopError;
@@ -63,6 +65,9 @@ pub struct ListenerPollInterval {
 pub enum ListenerError {
     #[error("listener IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("runtime socket file error: {0}")]
+    RuntimeSocketFile(#[from] RuntimeSocketFileError),
 }
 
 #[derive(Debug)]
@@ -462,7 +467,7 @@ impl BoundSocketFile {
 
 impl Drop for BoundSocketFile {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        RuntimeSocketFile::new(&self.path).remove_socket_if_current();
     }
 }
 
@@ -556,23 +561,8 @@ impl<'path> BoundSocketPath<'path> {
     }
 
     fn prepare(&self) -> Result<(), ListenerError> {
-        self.create_parent_directory()?;
-        self.remove_stale_socket()
-    }
-
-    fn create_parent_directory(&self) -> Result<(), ListenerError> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        RuntimeSocketFile::new(self.path).prepare()?;
         Ok(())
-    }
-
-    fn remove_stale_socket(&self) -> Result<(), ListenerError> {
-        match fs::remove_file(self.path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(ListenerError::Io(error)),
-        }
     }
 
     fn apply_socket_mode(&self) -> Result<(), ListenerError> {

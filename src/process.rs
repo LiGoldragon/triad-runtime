@@ -8,7 +8,13 @@
 //! owns only the process name it prints with.
 
 use std::{
-    fmt::Display, net::SocketAddr, os::unix::net::UnixStream, path::Path, process::ExitCode,
+    env,
+    fmt::{Display, Formatter},
+    fs,
+    net::SocketAddr,
+    os::unix::{fs::FileTypeExt, net::UnixStream},
+    path::{Component, Path, PathBuf},
+    process::ExitCode,
 };
 
 use crate::{RequestConcurrencyLimit, SocketMode};
@@ -186,6 +192,414 @@ impl From<UnixCredentials> for ConnectionContext {
 impl From<SocketAddr> for ConnectionContext {
     fn from(address: SocketAddr) -> Self {
         Self::from(PeerIdentity::Tcp(address))
+    }
+}
+
+/// The source that supplied a runtime path.
+///
+/// The value is carried for environment-derived paths so diagnostics can name
+/// the exact variable and content that failed validation instead of losing the
+/// bad input behind a synthesized default path.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SocketPathSource {
+    /// A component configuration field decoded from the daemon startup record.
+    ConfigurationField { field: String },
+    /// A built-in default path selected by the caller.
+    Default { field: String },
+    /// An explicit socket path override from an environment variable.
+    EnvironmentOverride { variable: String, value: String },
+    /// A default socket path derived from a runtime-directory environment
+    /// variable such as `XDG_RUNTIME_DIR`.
+    RuntimeDirectory {
+        variable: String,
+        value: String,
+        field: String,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RuntimePathErrorKind {
+    Empty,
+    Relative,
+    ParentDirectory,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
+#[error("runtime path {kind} for {path_source}: {value}")]
+pub struct RuntimePathError {
+    path_source: SocketPathSource,
+    value: String,
+    kind: RuntimePathErrorKind,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AbsoluteRuntimePath {
+    path: PathBuf,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSocketPath {
+    path: AbsoluteRuntimePath,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SocketPathSelection {
+    socket_path: RuntimeSocketPath,
+    source: SocketPathSource,
+}
+
+impl SocketPathSource {
+    pub fn configuration_field(field: impl Into<String>) -> Self {
+        Self::ConfigurationField {
+            field: field.into(),
+        }
+    }
+
+    pub fn default(field: impl Into<String>) -> Self {
+        Self::Default {
+            field: field.into(),
+        }
+    }
+
+    pub fn environment_override(variable: impl Into<String>, value: impl Into<String>) -> Self {
+        Self::EnvironmentOverride {
+            variable: variable.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn runtime_directory(
+        variable: impl Into<String>,
+        value: impl Into<String>,
+        field: impl Into<String>,
+    ) -> Self {
+        Self::RuntimeDirectory {
+            variable: variable.into(),
+            value: value.into(),
+            field: field.into(),
+        }
+    }
+}
+
+impl Display for SocketPathSource {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ConfigurationField { field } => write!(formatter, "configuration field {field}"),
+            Self::Default { field } => write!(formatter, "default {field}"),
+            Self::EnvironmentOverride { variable, value } => {
+                write!(formatter, "environment override {variable}={value:?}")
+            }
+            Self::RuntimeDirectory {
+                variable,
+                value,
+                field,
+            } => write!(
+                formatter,
+                "runtime-directory default {field} from {variable}={value:?}"
+            ),
+        }
+    }
+}
+
+impl Display for RuntimePathErrorKind {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Empty => formatter.write_str("is empty"),
+            Self::Relative => formatter.write_str("is relative"),
+            Self::ParentDirectory => formatter.write_str("contains parent-directory traversal"),
+        }
+    }
+}
+
+impl RuntimePathError {
+    fn new(source: SocketPathSource, path: &Path, kind: RuntimePathErrorKind) -> Self {
+        Self {
+            path_source: source,
+            value: path.display().to_string(),
+            kind,
+        }
+    }
+
+    pub fn source(&self) -> &SocketPathSource {
+        &self.path_source
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+
+    pub fn kind(&self) -> RuntimePathErrorKind {
+        self.kind
+    }
+}
+
+impl AbsoluteRuntimePath {
+    pub fn try_new(
+        source: SocketPathSource,
+        path: impl Into<PathBuf>,
+    ) -> Result<Self, RuntimePathError> {
+        let path = path.into();
+        if path.as_os_str().is_empty() {
+            return Err(RuntimePathError::new(
+                source,
+                &path,
+                RuntimePathErrorKind::Empty,
+            ));
+        }
+        if !path.is_absolute() {
+            return Err(RuntimePathError::new(
+                source,
+                &path,
+                RuntimePathErrorKind::Relative,
+            ));
+        }
+        if path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir))
+        {
+            return Err(RuntimePathError::new(
+                source,
+                &path,
+                RuntimePathErrorKind::ParentDirectory,
+            ));
+        }
+        Ok(Self { path })
+    }
+
+    pub fn as_path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn into_path_buf(self) -> PathBuf {
+        self.path
+    }
+}
+
+impl AsRef<Path> for AbsoluteRuntimePath {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl RuntimeSocketPath {
+    pub fn try_new(
+        source: SocketPathSource,
+        path: impl Into<PathBuf>,
+    ) -> Result<Self, RuntimePathError> {
+        Ok(Self {
+            path: AbsoluteRuntimePath::try_new(source, path)?,
+        })
+    }
+
+    pub fn as_path(&self) -> &Path {
+        self.path.as_path()
+    }
+
+    pub fn into_path_buf(self) -> PathBuf {
+        self.path.into_path_buf()
+    }
+}
+
+impl AsRef<Path> for RuntimeSocketPath {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+impl SocketPathSelection {
+    pub fn from_default(
+        field: impl Into<String>,
+        path: impl Into<PathBuf>,
+    ) -> Result<Self, RuntimePathError> {
+        let source = SocketPathSource::default(field);
+        Self::from_source(source, path)
+    }
+
+    pub fn from_environment_override(
+        variable: impl Into<String>,
+    ) -> Result<Option<Self>, RuntimePathError> {
+        let variable = variable.into();
+        let Some(value) = env::var_os(&variable) else {
+            return Ok(None);
+        };
+        let value = value.to_string_lossy().into_owned();
+        let source = SocketPathSource::environment_override(variable, value.clone());
+        Self::from_source(source, PathBuf::from(value)).map(Some)
+    }
+
+    pub fn from_runtime_directory(
+        variable: impl Into<String>,
+        field: impl Into<String>,
+        socket_path_inside_runtime_directory: impl AsRef<Path>,
+    ) -> Result<Self, RuntimePathError> {
+        let variable = variable.into();
+        let value = env::var_os(&variable)
+            .map(|value| value.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let source = SocketPathSource::runtime_directory(variable, value.clone(), field);
+        if value.is_empty() {
+            return Err(RuntimePathError::new(
+                source,
+                &PathBuf::from(value),
+                RuntimePathErrorKind::Empty,
+            ));
+        }
+        let path = PathBuf::from(&value).join(socket_path_inside_runtime_directory);
+        Self::from_source(source, path)
+    }
+
+    pub fn select_environment_override(
+        self,
+        variable: impl Into<String>,
+    ) -> Result<Self, RuntimePathError> {
+        Ok(Self::from_environment_override(variable)?.unwrap_or(self))
+    }
+
+    pub fn from_source(
+        source: SocketPathSource,
+        path: impl Into<PathBuf>,
+    ) -> Result<Self, RuntimePathError> {
+        Ok(Self {
+            socket_path: RuntimeSocketPath::try_new(source.clone(), path)?,
+            source,
+        })
+    }
+
+    pub fn socket_path(&self) -> &RuntimeSocketPath {
+        &self.socket_path
+    }
+
+    pub fn source(&self) -> &SocketPathSource {
+        &self.source
+    }
+
+    pub fn as_path(&self) -> &Path {
+        self.socket_path.as_path()
+    }
+
+    pub fn into_path_buf(self) -> PathBuf {
+        self.socket_path.into_path_buf()
+    }
+}
+
+impl AsRef<Path> for SocketPathSelection {
+    fn as_ref(&self) -> &Path {
+        self.as_path()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ExistingRuntimePathKind {
+    Socket,
+    RegularFile,
+    Directory,
+    Symlink,
+    Other,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RuntimeSocketFileError {
+    #[error("invalid runtime socket path: {0}")]
+    RuntimePath(#[from] RuntimePathError),
+
+    #[error("runtime socket file IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("refuse to replace non-socket runtime path {} ({kind})", path.display())]
+    NonSocketPath {
+        path: PathBuf,
+        kind: ExistingRuntimePathKind,
+    },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSocketFile {
+    path: PathBuf,
+}
+
+impl Display for ExistingRuntimePathKind {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Socket => formatter.write_str("socket"),
+            Self::RegularFile => formatter.write_str("regular file"),
+            Self::Directory => formatter.write_str("directory"),
+            Self::Symlink => formatter.write_str("symlink"),
+            Self::Other => formatter.write_str("other file type"),
+        }
+    }
+}
+
+impl ExistingRuntimePathKind {
+    fn from_file_type(file_type: fs::FileType) -> Self {
+        if file_type.is_socket() {
+            Self::Socket
+        } else if file_type.is_file() {
+            Self::RegularFile
+        } else if file_type.is_dir() {
+            Self::Directory
+        } else if file_type.is_symlink() {
+            Self::Symlink
+        } else {
+            Self::Other
+        }
+    }
+
+    fn is_socket(self) -> bool {
+        matches!(self, Self::Socket)
+    }
+}
+
+impl RuntimeSocketFile {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self { path: path.into() }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn prepare(&self) -> Result<(), RuntimeSocketFileError> {
+        AbsoluteRuntimePath::try_new(
+            SocketPathSource::default("listener socket path"),
+            self.path.clone(),
+        )?;
+        self.create_parent_directory()?;
+        self.remove_stale_socket()
+    }
+
+    pub fn remove_socket_if_current(&self) {
+        let Ok(metadata) = fs::symlink_metadata(&self.path) else {
+            return;
+        };
+        if ExistingRuntimePathKind::from_file_type(metadata.file_type()).is_socket() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+
+    fn create_parent_directory(&self) -> Result<(), RuntimeSocketFileError> {
+        if let Some(parent) = self.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        Ok(())
+    }
+
+    fn remove_stale_socket(&self) -> Result<(), RuntimeSocketFileError> {
+        match fs::symlink_metadata(&self.path) {
+            Ok(metadata) => {
+                let kind = ExistingRuntimePathKind::from_file_type(metadata.file_type());
+                if kind.is_socket() {
+                    fs::remove_file(&self.path)?;
+                    Ok(())
+                } else {
+                    Err(RuntimeSocketFileError::NonSocketPath {
+                        path: self.path.clone(),
+                        kind,
+                    })
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(RuntimeSocketFileError::Io(error)),
+        }
     }
 }
 

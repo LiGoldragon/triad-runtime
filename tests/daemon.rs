@@ -327,6 +327,85 @@ fn multi_listener_daemon_removes_socket_paths_on_drop() {
 }
 
 #[test]
+fn listener_bind_rejects_regular_file_at_socket_path_and_preserves_it() {
+    let directory = TempDir::new().expect("tempdir");
+    let socket_path = directory.path().join("component.sock");
+    fs::write(&socket_path, "not a socket").expect("write sentinel regular file");
+
+    let error = match SingleListenerDaemon::new(
+        &socket_path,
+        TestRuntime::default(),
+        RequestErrorLog::new("test-daemon"),
+    )
+    .bind()
+    {
+        Ok(_) => panic!("regular file at socket path must be rejected"),
+        Err(error) => error,
+    };
+
+    assert!(
+        error.to_string().contains("regular file"),
+        "error names the existing non-socket path kind: {error}"
+    );
+    assert_eq!(
+        fs::read_to_string(&socket_path).expect("regular file is preserved"),
+        "not a socket"
+    );
+}
+
+#[test]
+fn listener_bind_removes_stale_socket_file() {
+    let directory = TempDir::new().expect("tempdir");
+    let socket_path = directory.path().join("component.sock");
+    let stale_listener =
+        std::os::unix::net::UnixListener::bind(&socket_path).expect("bind stale socket file");
+    drop(stale_listener);
+    assert!(
+        socket_path.exists(),
+        "stale socket file remains after listener drop"
+    );
+
+    let _daemon = SingleListenerDaemon::new(
+        &socket_path,
+        TestRuntime::default(),
+        RequestErrorLog::new("test-daemon"),
+    )
+    .bind()
+    .expect("stale socket is removed before binding replacement listener");
+
+    let file_type = fs::symlink_metadata(&socket_path)
+        .expect("replacement socket metadata")
+        .file_type();
+    assert!(
+        std::os::unix::fs::FileTypeExt::is_socket(&file_type),
+        "replacement path is a unix socket"
+    );
+}
+
+#[test]
+fn listener_drop_preserves_non_socket_replacement() {
+    let directory = TempDir::new().expect("tempdir");
+    let socket_path = directory.path().join("component.sock");
+    {
+        let daemon = SingleListenerDaemon::new(
+            &socket_path,
+            TestRuntime::default(),
+            RequestErrorLog::new("test-daemon"),
+        )
+        .bind()
+        .expect("bind listener");
+        fs::remove_file(&socket_path).expect("remove bound socket path");
+        fs::write(&socket_path, "replacement").expect("write non-socket replacement");
+        drop(daemon);
+    }
+
+    assert_eq!(
+        fs::read_to_string(&socket_path).expect("replacement file is preserved"),
+        "replacement"
+    );
+}
+
+#[test]
 fn multi_listener_socket_modes_are_applied_per_socket() {
     let directory = TempDir::new().expect("tempdir");
     let ordinary_socket_path = directory.path().join("ordinary.sock");

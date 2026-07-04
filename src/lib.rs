@@ -40,7 +40,12 @@ pub use daemon::{
     SocketMode,
 };
 pub use frame::{FrameBody, FrameError, LengthPrefixedCodec, MaximumFrameLength};
-pub use process::{BindingSurface, ConnectionContext, ExitReport, PeerIdentity, UnixCredentials};
+pub use process::{
+    AbsoluteRuntimePath, BindingSurface, ConnectionContext, ExistingRuntimePathKind, ExitReport,
+    PeerIdentity, RuntimePathError, RuntimePathErrorKind, RuntimeSocketFile,
+    RuntimeSocketFileError, RuntimeSocketPath, SocketPathSelection, SocketPathSource,
+    UnixCredentials,
+};
 pub use reaction::{Action, Never, Work};
 pub use role::{
     NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,

@@ -38,7 +38,9 @@ impl EngineRequestError {
     }
 }
 
-use crate::{ConnectionContext, RequestErrorLog, SocketMode};
+use crate::{
+    ConnectionContext, RequestErrorLog, RuntimeSocketFile, RuntimeSocketFileError, SocketMode,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RequestConcurrencyLimit {
@@ -77,6 +79,9 @@ pub enum RequestPermitError {
 pub enum AsyncListenerError {
     #[error("async listener IO error: {0}")]
     Io(#[from] std::io::Error),
+
+    #[error("runtime socket file error: {0}")]
+    RuntimeSocketFile(#[from] RuntimeSocketFileError),
 
     #[error("request gate error: {detail}")]
     RequestGate { detail: String },
@@ -1047,23 +1052,8 @@ impl<'path> AsyncSocketPath<'path> {
     }
 
     fn prepare(&self) -> Result<(), AsyncListenerError> {
-        self.create_parent_directory()?;
-        self.remove_stale_socket()
-    }
-
-    fn create_parent_directory(&self) -> Result<(), AsyncListenerError> {
-        if let Some(parent) = self.path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
+        RuntimeSocketFile::new(self.path).prepare()?;
         Ok(())
-    }
-
-    fn remove_stale_socket(&self) -> Result<(), AsyncListenerError> {
-        match std::fs::remove_file(self.path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(AsyncListenerError::Io(error)),
-        }
     }
 
     fn apply_socket_mode(&self) -> Result<(), AsyncListenerError> {
@@ -1085,7 +1075,7 @@ impl AsyncSocketFile {
 
 impl Drop for AsyncSocketFile {
     fn drop(&mut self) {
-        let _ = std::fs::remove_file(&self.path);
+        RuntimeSocketFile::new(&self.path).remove_socket_if_current();
     }
 }
 
@@ -1116,6 +1106,7 @@ impl RequestAdmission {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
 
@@ -1501,6 +1492,88 @@ mod tests {
         }
 
         assert!(!socket_path.exists());
+    }
+
+    #[tokio::test]
+    async fn async_single_listener_rejects_regular_file_at_socket_path_and_preserves_it() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let socket_path = directory.path().join("async-daemon.sock");
+        fs::write(&socket_path, "not a socket").expect("write sentinel regular file");
+
+        let error = match AsyncSingleListenerDaemon::new(
+            &socket_path,
+            CountingConnectionRuntime::new(Duration::from_millis(1)),
+            RequestErrorLog::new("async-test"),
+        )
+        .bind()
+        .await
+        {
+            Ok(_) => panic!("regular file at socket path must be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error.to_string().contains("regular file"),
+            "error names the existing non-socket path kind: {error}"
+        );
+        assert_eq!(
+            fs::read_to_string(&socket_path).expect("regular file is preserved"),
+            "not a socket"
+        );
+    }
+
+    #[tokio::test]
+    async fn async_single_listener_removes_stale_socket_file_before_binding() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let socket_path = directory.path().join("async-daemon.sock");
+        let stale_listener =
+            std::os::unix::net::UnixListener::bind(&socket_path).expect("bind stale socket file");
+        drop(stale_listener);
+        assert!(
+            socket_path.exists(),
+            "stale socket file remains after listener drop"
+        );
+
+        let _daemon = AsyncSingleListenerDaemon::new(
+            &socket_path,
+            CountingConnectionRuntime::new(Duration::from_millis(1)),
+            RequestErrorLog::new("async-test"),
+        )
+        .bind()
+        .await
+        .expect("stale socket is removed before binding replacement listener");
+
+        let file_type = fs::symlink_metadata(&socket_path)
+            .expect("replacement socket metadata")
+            .file_type();
+        assert!(
+            std::os::unix::fs::FileTypeExt::is_socket(&file_type),
+            "replacement path is a unix socket"
+        );
+    }
+
+    #[tokio::test]
+    async fn async_single_listener_drop_preserves_non_socket_replacement() {
+        let directory = tempfile::TempDir::new().expect("tempdir");
+        let socket_path = directory.path().join("async-daemon.sock");
+        {
+            let daemon = AsyncSingleListenerDaemon::new(
+                &socket_path,
+                CountingConnectionRuntime::new(Duration::from_millis(1)),
+                RequestErrorLog::new("async-test"),
+            )
+            .bind()
+            .await
+            .expect("bind async listener");
+            fs::remove_file(&socket_path).expect("remove bound socket path");
+            fs::write(&socket_path, "replacement").expect("write non-socket replacement");
+            drop(daemon);
+        }
+
+        assert_eq!(
+            fs::read_to_string(&socket_path).expect("replacement file is preserved"),
+            "replacement"
+        );
     }
 
     #[tokio::test]
