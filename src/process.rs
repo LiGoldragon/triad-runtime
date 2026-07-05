@@ -1,6 +1,6 @@
 //! Component-agnostic process-edge runtime for emitted daemons.
 //!
-//! The emitted daemon module (schema-rust-next `RustEmissionTarget::Daemon`)
+//! The emitted daemon module (schema-rust `RustEmissionTarget::Daemon`)
 //! reads its socket layout through [`BindingSurface`] and turns its top
 //! `Result` into a process exit code through [`ExitReport`]. Both surfaces are
 //! deliberately free of component meaning: the trait names the uniform socket
@@ -130,7 +130,7 @@ impl PeerIdentity {
 
 /// The per-connection trust context of an accepted stream.
 ///
-/// The schema-rust-next emitted daemon module reads this once per accepted
+/// The schema-rust emitted daemon module reads this once per accepted
 /// working connection and threads it into the component's working-input hook,
 /// so a component can mint an origin (owner vs non-owner local user vs internal
 /// component instance vs remote host) from the transport trust boundary rather

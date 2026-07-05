@@ -18,7 +18,7 @@ component-specific meaning.
 
 Async task-backed daemon execution is the new target shape. New schema-emitted daemon work should target `AsyncSingleListenerDaemon` and `AsyncMultiListenerDaemon`; the older synchronous `SingleListenerDaemon` and `MultiListenerDaemon` remain only for consumers not yet migrated.
 
-The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runner` and awaits `Runner::drive`) is **not owned by `triad-runtime`**. That glue is schema-emitted by `schema-rust-next` into each component crate. `triad-runtime` supplies the loop; the schema supplies the per-component entry.
+The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runner` and awaits `Runner::drive`) is **not owned by `triad-runtime`**. That glue is schema-emitted by `schema-rust` into each component crate. `triad-runtime` supplies the loop; the schema supplies the per-component entry.
 
 Cross-host transport is a tailnet-bound TCP listener in this crate, reusing the length-prefixed frame codec, with peer identity as a typed closed sum distinguishing kernel-vouched Unix-socket peers from tailnet TCP peers. Ssh-forwarded sockets are rejected as the transport shape. Per Spirit `rj9y` (Decision, High).
 
@@ -175,12 +175,12 @@ The per-component runner GLUE is NOT owned by `triad-runtime`. The default
 `NexusEngine::execute` method — which constructs a `Runner` from the component's
 `continuation_limit`, wraps the component engine in a `RunnerEngines` adapter,
 awaits `Runner::drive`, and projects the reply back into a `NexusAction` — is
-schema-emitted by `schema-rust-next` into each component crate. In `spirit` that
+schema-emitted by `schema-rust` into each component crate. In `spirit` that
 glue is the generated `src/schema/nexus.rs`. `triad-runtime` provides the loop;
 the schema provides each component's typed entry into the loop.
 
 The old shorthand `triad_main!` is now realized as a source-visible emitted
-daemon module, not as a proc-macro invocation. `schema-rust-next` emits
+daemon module, not as a proc-macro invocation. `schema-rust` emits
 `src/schema/daemon.rs` when a component build declares a `NexusDaemonShape`.
 That module owns `DaemonCommand`, `ComponentDaemon`, the
 `GeneratedDaemonRuntime` decode -> execute -> encode spine, single/multi
@@ -262,7 +262,7 @@ to the subscriber connection.
 ## Process Runtime
 
 `process.rs` owns the component-agnostic process edge the emitted daemon
-module (`schema-rust-next` `RustEmissionTarget::Daemon`) reads.
+module (`schema-rust` `RustEmissionTarget::Daemon`) reads.
 
 `BindingSurface` is the uniform socket-and-storage surface a component's
 hand-written `Configuration` implements: `socket_path` (the required working
@@ -287,12 +287,12 @@ triple, read with rustix's safe `socket_peercred` wrapper), and a TCP peer
 carrying only its remote socket address. No accessor pretends a TCP peer has
 Unix credentials — `unix_credentials()` and `tcp_address()` both return
 `Option`, and the credential accessors live on `UnixCredentials` itself. The
-schema-rust-next emitted daemon module reads the context from each accepted
+schema-rust emitted daemon module reads the context from each accepted
 stream and passes it into the component working-input hook; components that
 mint provenance classify owner/non-owner/internal/remote origins from the
 typed peer identity instead of trusting payload fields. `triad-runtime` keeps
 the context type and safe credential reader; the actual `handle_working_input`
-hook signature and wiring are emitted by schema-rust-next.
+hook signature and wiring are emitted by schema-rust.
 
 ## Trace Runtime
 

@@ -110,7 +110,7 @@ type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, 
 // "unit" leg `LegAbsent` — a real, derivable, single-state payload that proves
 // a three-leg component still round-trips its constructible variants. (In
 // production this is the fixed-arity fallback the gate selects.)
-// The fixed-arity stand-in must carry at least one field: the nota-next derive
+// The fixed-arity stand-in must carry at least one field: the nota derive
 // emits `NotaEncode`/`NotaDecode` for single-field records (like every payload
 // here) but NOT for a zero-field unit struct, so a bare `struct LegAbsent;`
 // fails the NOTA half of the stack just as `Never` fails the rkyv half. The
