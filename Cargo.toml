@@ -18,7 +18,7 @@ nota-text = ["dep:nota"]
 kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["macros", "tracing"] }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 rustix = { version = "1", default-features = false, features = ["std", "net"] }
-signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "drop-next" }
+signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
 nota = { git = "https://github.com/LiGoldragon/nota.git", branch = "main", optional = true }
 thiserror = "2"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
