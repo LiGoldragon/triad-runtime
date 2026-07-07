@@ -16,7 +16,7 @@ component-specific meaning.
 
 `triad-runtime` provides the reusable runtime nouns schema-emitted daemons compose. The Nexus schema is the engine's **feature catalog**: every internal feature — any computation, any filtering or condition on results, any conditional write — is declared as a Nexus verb and object in the component schema, never as inline hidden logic in this runtime library. The runner drives already-declared typed actions; it must not hide new component capability behind generic runtime code. Per Spirit record `z6qu`.
 
-Async task-backed daemon execution is the new target shape. New schema-emitted daemon work should target `AsyncSingleListenerDaemon` and `AsyncMultiListenerDaemon`; the older synchronous `SingleListenerDaemon` and `MultiListenerDaemon` remain only for consumers not yet migrated.
+Async task-backed daemon execution is the new target shape. `AsyncSingleListenerDaemon` and `AsyncMultiListenerDaemon` are the current target shells; see `NON_IDEAL_AGENTS.md` for legacy listener debt that must not shape new work.
 
 The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runner` and awaits `Runner::drive`) is **not owned by `triad-runtime`**. That glue is schema-emitted by `schema-rust` into each component crate. `triad-runtime` supplies the loop; the schema supplies the per-component entry.
 
@@ -219,9 +219,8 @@ signal-frame transport meets the component engine.
 `MultiListenerDaemon` is the legacy synchronous ordinary/meta shell. It binds a
 list of `ListenerSocket<Listener>` values, applies each socket's optional
 `SocketMode`, sets listeners nonblocking, and polls them in one synchronous
-loop. It remains only for consumers that have not yet migrated to
-`AsyncMultiListenerDaemon`. New schema-emitted daemon work should not target
-the polling shell.
+loop. See `NON_IDEAL_AGENTS.md` for its migration debt and restrictions on new
+schema-emitted daemon work.
 
 `MultiListenerRuntime::should_continue` is the stop boundary for supervised
 components. The default keeps serving forever; a component runtime that owns a
