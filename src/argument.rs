@@ -69,8 +69,32 @@ impl ComponentCommand {
         }
     }
 
+    /// The `--pretty` flag every NOTA-printing CLI honors: a request to reflow
+    /// the reply for reading. Parsing it here keeps the flag out of each CLI's
+    /// operand handling and adds no NOTA dependency to the shared harness, so a
+    /// daemon build that never enables `nota-text` still carries no NOTA code.
+    const PRETTY_FLAG: &'static str = "--pretty";
+
+    /// Whether the caller asked for readable NOTA output with `--pretty`.
+    ///
+    /// A CLI passes this to `nota::NotaOutputForm::from_pretty_requested` at its
+    /// print site; the daemon paths ignore it.
+    pub fn pretty_requested(&self) -> bool {
+        self.arguments
+            .iter()
+            .any(|argument| argument == Self::PRETTY_FLAG)
+    }
+
     pub fn argument_count(&self) -> usize {
-        self.arguments.len()
+        self.operands().count()
+    }
+
+    /// The positional arguments, with any recognized flag such as `--pretty`
+    /// removed, so the single-argument rule counts only real NOTA operands.
+    fn operands(&self) -> impl Iterator<Item = &String> {
+        self.arguments
+            .iter()
+            .filter(|argument| *argument != Self::PRETTY_FLAG)
     }
 
     pub fn nota_argument(&self) -> Result<ComponentArgument, ArgumentError> {
@@ -99,10 +123,11 @@ impl ComponentCommand {
     }
 
     fn raw_argument(&self) -> Result<RawArgument, ArgumentError> {
-        match self.arguments.as_slice() {
+        let operands = self.operands().collect::<Vec<_>>();
+        match operands.as_slice() {
             [argument] => Ok(RawArgument::from_single(argument)),
             _ => Err(ArgumentError::ArgumentCount {
-                count: self.arguments.len(),
+                count: operands.len(),
             }),
         }
     }

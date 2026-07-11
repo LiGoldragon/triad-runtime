@@ -87,6 +87,34 @@ fn daemon_argument_rejects_nota_file() {
 }
 
 #[test]
+fn pretty_flag_is_recognized_and_removed_from_the_nota_operand() {
+    let plain = ComponentCommand::from_arguments(["(Record [payload])"]);
+    assert!(!plain.pretty_requested());
+
+    let pretty = ComponentCommand::from_arguments(["--pretty", "(Record [payload])"]);
+    assert!(pretty.pretty_requested());
+    assert_eq!(pretty.argument_count(), 1);
+    assert_eq!(
+        pretty
+            .nota_argument()
+            .expect("nota argument")
+            .into_inline_nota()
+            .expect("inline nota")
+            .as_str(),
+        "(Record [payload])"
+    );
+}
+
+#[test]
+fn pretty_flag_does_not_relax_the_single_argument_rule() {
+    let error = ComponentCommand::from_arguments(["--pretty", "one", "two"])
+        .nota_argument()
+        .expect_err("two operands remain an error even with --pretty");
+
+    assert!(matches!(error, ArgumentError::ArgumentCount { count: 2 }));
+}
+
+#[test]
 fn component_argument_variants_are_distinct() {
     let command = ComponentCommand::from_arguments(["(Record [payload])"]);
 
