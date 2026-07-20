@@ -342,7 +342,7 @@ dependencies = [
 [[package]]
 name = "nota"
 version = "0.5.1"
-source = "git+https://github.com/LiGoldragon/nota.git?branch=main#bea7e2840ac2cf3e384f07b5c10eeb0890cead25"
+source = "git+https://github.com/LiGoldragon/nota.git?rev=ce7c564de0a0518eaa1938d55dccc460a67cadb4#ce7c564de0a0518eaa1938d55dccc460a67cadb4"
 dependencies = [
  "nota-derive",
  "rkyv",
@@ -351,7 +351,7 @@ dependencies = [
 [[package]]
 name = "nota-derive"
 version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/nota.git?branch=main#bea7e2840ac2cf3e384f07b5c10eeb0890cead25"
+source = "git+https://github.com/LiGoldragon/nota.git?rev=ce7c564de0a0518eaa1938d55dccc460a67cadb4#ce7c564de0a0518eaa1938d55dccc460a67cadb4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -548,8 +548,8 @@ dependencies = [
 
 [[package]]
 name = "signal-frame"
-version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#44d22a07e75e6d2ff13581a5bb84d47c6ef35e97"
+version = "0.3.1"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?rev=91e675298b79ec2aab2e0714a5e3e5b2d6d07339#91e675298b79ec2aab2e0714a5e3e5b2d6d07339"
 dependencies = [
  "paste",
  "rkyv",
@@ -560,7 +560,7 @@ dependencies = [
 [[package]]
 name = "signal-frame-macros"
 version = "0.1.1"
-source = "git+https://github.com/LiGoldragon/signal-frame.git?branch=main#44d22a07e75e6d2ff13581a5bb84d47c6ef35e97"
+source = "git+https://github.com/LiGoldragon/signal-frame.git?rev=91e675298b79ec2aab2e0714a5e3e5b2d6d07339#91e675298b79ec2aab2e0714a5e3e5b2d6d07339"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -708,7 +708,7 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "kameo",
  "nota",
