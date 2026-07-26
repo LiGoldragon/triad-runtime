@@ -245,22 +245,36 @@ subscriptions, issues tokens, accepts already-minted tokens from a
 schema-declared open-subscription effect, unregisters tokens, and publishes
 matching events through caller-supplied filter and delivery closures.
 
-`SubscriptionEventSequence` owns `signal_frame::StreamEventIdentifier`
-generation for the daemon/acceptor lane. `SubscriptionEventPublisher<Contract,
-Input, Output, Event>` combines that sequence with the contract-local event
-`WireRoute` and produces
+`SubscriptionEventEpochAuthority` is the single application-owned authority
+for subscription-event epochs. It reserves a non-cloneable, one-use
+`SubscriptionEventEpoch` for each publisher. The application persists
+`next_epoch()` and restores it with `restore(...)`; it is responsible for
+persisting a reservation before its publisher is used after a crash boundary
+and for never running two authorities for the same stream identity.
+`SubscriptionEventPublisher<Contract, Input, Output, Event>` consumes that
+reservation, privately owns its acceptor-lane sequence, and produces
 `signal_frame::BoundStreamingFrame<Contract, Input, Output, Event>` values
 whose body is `StreamingFrameBody::SubscriptionEvent`. `Contract` implements
 `signal_frame::WireContract`, so the producer derives the nonzero contract and
 revision header and callers cannot inject an unbound or wrong-contract header.
 The publisher remains generic over the schema-generated request, reply, and
-event roots; it never knows component event variants.
+event roots; it never knows component event variants. `publish` returns
+`Result<BoundStreamingFrame<...>, SubscriptionPublishError>`; maximum sequence
+and epoch values are issued once, then remain typed exhaustion errors without
+wrapping or mutation.
 
 The 0.8 migration removes the unbound publisher API. Consumers add their
 generated contract marker as the first publisher type parameter and pass the
-event `WireRoute` to `new` or `acceptor`; raw `ShortHeader` construction and
-unbound `StreamingFrame` output have no compatibility path. Event identifier
-fields are read through `session_epoch()`, `lane()`, and `sequence()`.
+event `WireRoute` to `new`; raw `ShortHeader` construction and unbound
+`StreamingFrame` output have no compatibility path. Consumers now obtain the
+second `new` argument from an application-owned
+`SubscriptionEventEpochAuthority`, handle `SubscriptionEventEpochError` at
+reservation and `SubscriptionPublishError` from `publish`, and restore only
+the persisted next epoch with `SubscriptionEventEpochAuthority::restore`.
+Restoring stale state or running concurrent authorities can reintroduce duplicate
+epochs and remains the application's persistence and single-authority
+responsibility. Event identifier fields are read through `session_epoch()`,
+`lane()`, and `sequence()`.
 
 The runtime does not own stream policy. Schema declares which operations open
 streams and which event variants belong to streams; generated code exposes the

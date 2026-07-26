@@ -55,8 +55,9 @@ pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
 };
 pub use streaming::{
-    Subscription, SubscriptionEventPublisher, SubscriptionEventSequence, SubscriptionRegistry,
-    SubscriptionToken, SubscriptionTokenIssuer,
+    Subscription, SubscriptionEventEpoch, SubscriptionEventEpochAuthority,
+    SubscriptionEventEpochError, SubscriptionEventPublisher, SubscriptionPublishError,
+    SubscriptionRegistry, SubscriptionToken, SubscriptionTokenIssuer,
 };
 pub use tcp::{BoundTcpListenerDaemon, TcpListenerDaemon};
 pub use trace::{

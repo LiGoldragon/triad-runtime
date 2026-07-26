@@ -34,13 +34,35 @@ where
     filter: Filter,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct SubscriptionEventSequence {
-    session_epoch: SessionEpoch,
-    next_sequence: LaneSequence,
+#[derive(Debug, Eq, PartialEq)]
+pub struct SubscriptionEventEpochAuthority {
+    next_epoch: Option<SessionEpoch>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
+pub struct SubscriptionEventEpoch {
+    session_epoch: SessionEpoch,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SubscriptionEventEpochError {
+    #[error("subscription event epoch space is exhausted")]
+    EpochExhausted,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SubscriptionPublishError {
+    #[error("subscription event sequence space is exhausted")]
+    SequenceExhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct SubscriptionEventSequence {
+    session_epoch: SessionEpoch,
+    next_sequence: Option<LaneSequence>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct SubscriptionEventPublisher<Contract, RequestPayload, ReplyPayload, EventPayload>
 where
     Contract: WireContract,
@@ -171,30 +193,58 @@ where
     }
 }
 
+impl SubscriptionEventEpochAuthority {
+    /// Begins reserving epochs at `first_epoch`.
+    pub const fn new(first_epoch: SessionEpoch) -> Self {
+        Self {
+            next_epoch: Some(first_epoch),
+        }
+    }
+
+    /// Restores the persisted next epoch for this one application-owned authority.
+    ///
+    /// The application must persist [`Self::next_epoch`] and ensure that it has
+    /// only one live authority for a stream identity. Persist the returned next
+    /// epoch before using a newly reserved publisher after a crash boundary.
+    pub const fn restore(next_epoch: Option<SessionEpoch>) -> Self {
+        Self { next_epoch }
+    }
+
+    /// Returns the state that the application persists to restore this authority.
+    pub const fn next_epoch(&self) -> Option<SessionEpoch> {
+        self.next_epoch
+    }
+
+    /// Reserves one epoch for a single subscription-event publisher.
+    pub fn reserve(&mut self) -> Result<SubscriptionEventEpoch, SubscriptionEventEpochError> {
+        let Some(session_epoch) = self.next_epoch else {
+            return Err(SubscriptionEventEpochError::EpochExhausted);
+        };
+
+        self.next_epoch = session_epoch.value().checked_add(1).map(SessionEpoch::new);
+        Ok(SubscriptionEventEpoch { session_epoch })
+    }
+}
+
 impl SubscriptionEventSequence {
-    pub const fn new(session_epoch: SessionEpoch, next_sequence: LaneSequence) -> Self {
+    const fn new(session_epoch: SessionEpoch, next_sequence: Option<LaneSequence>) -> Self {
         Self {
             session_epoch,
             next_sequence,
         }
     }
 
-    pub const fn acceptor(session_epoch: SessionEpoch) -> Self {
-        Self::new(session_epoch, LaneSequence::first())
+    const fn acceptor(session_epoch: SessionEpoch) -> Self {
+        Self::new(session_epoch, Some(LaneSequence::first()))
     }
 
-    pub fn session_epoch(&self) -> SessionEpoch {
-        self.session_epoch
-    }
-
-    pub fn next_sequence(&self) -> LaneSequence {
-        self.next_sequence
-    }
-
-    pub fn next_identifier(&mut self) -> StreamEventIdentifier {
-        let identifier = StreamEventIdentifier::acceptor(self.session_epoch, self.next_sequence);
-        self.next_sequence = self.next_sequence.next();
-        identifier
+    fn next_identifier(&mut self) -> Result<StreamEventIdentifier, SubscriptionPublishError> {
+        let Some(next_sequence) = self.next_sequence else {
+            return Err(SubscriptionPublishError::SequenceExhausted);
+        };
+        let identifier = StreamEventIdentifier::acceptor(self.session_epoch, next_sequence);
+        self.next_sequence = next_sequence.value().checked_add(1).map(LaneSequence::new);
+        Ok(identifier)
     }
 }
 
@@ -203,10 +253,11 @@ impl<Contract, RequestPayload, ReplyPayload, EventPayload>
 where
     Contract: WireContract,
 {
-    pub const fn new(event_route: WireRoute, sequence: SubscriptionEventSequence) -> Self {
+    /// Creates the one publisher that owns `epoch`'s event sequence.
+    pub const fn new(event_route: WireRoute, epoch: SubscriptionEventEpoch) -> Self {
         Self {
             event_route,
-            sequence,
+            sequence: SubscriptionEventSequence::acceptor(epoch.session_epoch),
             contract: PhantomData,
             request_payload: PhantomData,
             reply_payload: PhantomData,
@@ -214,36 +265,49 @@ where
         }
     }
 
-    pub const fn acceptor(event_route: WireRoute, session_epoch: SessionEpoch) -> Self {
-        Self::new(
-            event_route,
-            SubscriptionEventSequence::acceptor(session_epoch),
-        )
-    }
-
     pub fn event_route(&self) -> WireRoute {
         self.event_route
-    }
-
-    pub fn sequence(&self) -> SubscriptionEventSequence {
-        self.sequence
     }
 
     pub fn publish<Token>(
         &mut self,
         token: Token,
         event: EventPayload,
-    ) -> BoundStreamingFrame<Contract, RequestPayload, ReplyPayload, EventPayload>
+    ) -> Result<
+        BoundStreamingFrame<Contract, RequestPayload, ReplyPayload, EventPayload>,
+        SubscriptionPublishError,
+    >
     where
         Token: SubscriptionToken,
     {
-        BoundStreamingFrame::new(
+        Ok(BoundStreamingFrame::new(
             self.event_route,
             StreamingFrameBody::SubscriptionEvent {
-                event_identifier: self.sequence.next_identifier(),
+                event_identifier: self.sequence.next_identifier()?,
                 token: token.into_inner(),
                 event,
             },
-        )
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subscription_event_sequence_issues_maximum_once_then_stays_exhausted() {
+        let mut sequence =
+            SubscriptionEventSequence::new(SessionEpoch::new(7), Some(LaneSequence::new(u64::MAX)));
+
+        let maximum = sequence.next_identifier().expect("issue maximum sequence");
+        assert_eq!(maximum.session_epoch(), SessionEpoch::new(7));
+        assert_eq!(maximum.sequence(), LaneSequence::new(u64::MAX));
+        assert_eq!(sequence.next_sequence, None);
+        assert_eq!(
+            sequence.next_identifier(),
+            Err(SubscriptionPublishError::SequenceExhausted)
+        );
+        assert_eq!(sequence.next_sequence, None);
     }
 }

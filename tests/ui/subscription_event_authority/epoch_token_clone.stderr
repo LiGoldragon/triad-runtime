@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `SubscriptionEventEpoch` in the current scope
+ --> tests/ui/subscription_event_authority/epoch_token_clone.rs:7:34
+  |
+7 |     let _duplicate = reservation.clone();
+  |                                  ^^^^^ method not found in `SubscriptionEventEpoch`

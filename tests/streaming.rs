@@ -7,8 +7,8 @@ use signal_frame::{
     WireRevision, WireRoute,
 };
 use triad_runtime::{
-    SubscriptionEventPublisher, SubscriptionEventSequence, SubscriptionRegistry, SubscriptionToken,
-    SubscriptionTokenIssuer,
+    SubscriptionEventEpochAuthority, SubscriptionEventEpochError, SubscriptionEventPublisher,
+    SubscriptionRegistry, SubscriptionToken, SubscriptionTokenIssuer,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,30 +155,62 @@ fn subscription_registry_can_register_an_already_minted_token() {
 }
 
 #[test]
-fn subscription_event_sequence_mints_monotonic_acceptor_identifiers() {
-    let mut sequence = SubscriptionEventSequence::acceptor(SessionEpoch::new(7));
+fn subscription_event_authority_reserves_distinct_epochs_and_publishers_start_sequences() {
+    let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
+    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(7));
+    let mut first =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
+            EVENT_ROUTE,
+            authority.reserve().expect("reserve first epoch"),
+        );
+    let mut second =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
+            EVENT_ROUTE,
+            authority.reserve().expect("reserve second epoch"),
+        );
 
-    let first = sequence.next_identifier();
-    let second = sequence.next_identifier();
+    let first = first
+        .publish(token, TestEvent::new("first"))
+        .expect("publish first");
+    let second = second
+        .publish(token, TestEvent::new("second"))
+        .expect("publish second");
+    let StreamingFrameBody::SubscriptionEvent {
+        event_identifier: first_identifier,
+        ..
+    } = first.into_body()
+    else {
+        panic!("expected subscription event");
+    };
+    let StreamingFrameBody::SubscriptionEvent {
+        event_identifier: second_identifier,
+        ..
+    } = second.into_body()
+    else {
+        panic!("expected subscription event");
+    };
 
-    assert_eq!(first.session_epoch(), SessionEpoch::new(7));
-    assert_eq!(first.lane(), ExchangeLane::Acceptor);
-    assert_eq!(first.sequence(), LaneSequence::first());
-    assert_eq!(second.session_epoch(), SessionEpoch::new(7));
-    assert_eq!(second.sequence(), LaneSequence::new(1));
-    assert_eq!(sequence.next_sequence(), LaneSequence::new(2));
+    assert_eq!(first_identifier.session_epoch(), SessionEpoch::new(7));
+    assert_eq!(second_identifier.session_epoch(), SessionEpoch::new(8));
+    assert_eq!(first_identifier.lane(), ExchangeLane::Acceptor);
+    assert_eq!(second_identifier.lane(), ExchangeLane::Acceptor);
+    assert_eq!(first_identifier.sequence(), LaneSequence::first());
+    assert_eq!(second_identifier.sequence(), LaneSequence::first());
 }
 
 #[test]
 fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
+    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(3));
     let mut publisher =
-        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::acceptor(
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
-            SessionEpoch::new(3),
+            authority.reserve().expect("reserve epoch"),
         );
 
-    let frame = publisher.publish(token, TestEvent::new("commit"));
+    let frame = publisher
+        .publish(token, TestEvent::new("commit"))
+        .expect("publish event");
     let _: &BoundStreamingFrame<TestContract, TestRequest, TestReply, TestEvent> = &frame;
     let bytes = frame.encode_length_prefixed().expect("encode frame");
     let decoded = BoundStreamingFrame::<TestContract, TestRequest, TestReply, TestEvent>::
@@ -202,7 +234,9 @@ fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
         _ => panic!("expected subscription event"),
     }
 
-    let next_frame = publisher.publish(token, TestEvent::new("next"));
+    let next_frame = publisher
+        .publish(token, TestEvent::new("next"))
+        .expect("publish next event");
     match next_frame.into_body() {
         StreamingFrameBody::SubscriptionEvent {
             event_identifier, ..
@@ -211,6 +245,87 @@ fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
         }
         _ => panic!("expected subscription event"),
     }
+}
+
+#[test]
+fn subscription_event_authority_exhausts_after_issuing_maximum_epoch() {
+    let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
+    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(u64::MAX));
+    let mut publisher =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
+            EVENT_ROUTE,
+            authority.reserve().expect("reserve maximum epoch"),
+        );
+
+    let frame = publisher
+        .publish(token, TestEvent::new("maximum epoch"))
+        .expect("publish maximum epoch");
+    let StreamingFrameBody::SubscriptionEvent {
+        event_identifier, ..
+    } = frame.into_body()
+    else {
+        panic!("expected subscription event");
+    };
+    assert_eq!(
+        event_identifier.session_epoch(),
+        SessionEpoch::new(u64::MAX)
+    );
+    assert_eq!(authority.next_epoch(), None);
+    assert_eq!(
+        authority.reserve(),
+        Err(SubscriptionEventEpochError::EpochExhausted)
+    );
+    assert_eq!(authority.next_epoch(), None);
+}
+
+#[test]
+fn subscription_event_authority_restores_the_persisted_next_epoch() {
+    let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
+    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(3));
+    let mut before_restart =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
+            EVENT_ROUTE,
+            authority.reserve().expect("reserve pre-restart epoch"),
+        );
+    let persisted_next_epoch = authority.next_epoch();
+    let mut restored = SubscriptionEventEpochAuthority::restore(persisted_next_epoch);
+    let mut after_restart =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
+            EVENT_ROUTE,
+            restored.reserve().expect("reserve post-restart epoch"),
+        );
+
+    let before_restart = before_restart
+        .publish(token, TestEvent::new("before restart"))
+        .expect("publish before restart");
+    let after_restart = after_restart
+        .publish(token, TestEvent::new("after restart"))
+        .expect("publish after restart");
+    let StreamingFrameBody::SubscriptionEvent {
+        event_identifier: before_restart_identifier,
+        ..
+    } = before_restart.into_body()
+    else {
+        panic!("expected subscription event");
+    };
+    let StreamingFrameBody::SubscriptionEvent {
+        event_identifier: after_restart_identifier,
+        ..
+    } = after_restart.into_body()
+    else {
+        panic!("expected subscription event");
+    };
+
+    assert_eq!(
+        before_restart_identifier.session_epoch(),
+        SessionEpoch::new(3)
+    );
+    assert_eq!(
+        after_restart_identifier.session_epoch(),
+        SessionEpoch::new(4)
+    );
+    assert_eq!(before_restart_identifier.sequence(), LaneSequence::first());
+    assert_eq!(after_restart_identifier.sequence(), LaneSequence::first());
 }
 
 #[test]

@@ -25,6 +25,7 @@ tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-th
 
 [dev-dependencies]
 tempfile = "3"
+trybuild = "1"
 
 [lints.rust]
 unsafe_code = "forbid"
