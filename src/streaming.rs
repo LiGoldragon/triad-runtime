@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use signal_frame::{
-    ExchangeLane, LaneSequence, SessionEpoch, ShortHeader, StreamEventIdentifier, StreamingFrame,
-    StreamingFrameBody, SubscriptionTokenInner,
+    BoundStreamingFrame, LaneSequence, SessionEpoch, StreamEventIdentifier, StreamingFrameBody,
+    SubscriptionTokenInner, WireContract, WireRoute,
 };
 
 pub trait SubscriptionToken: Copy + Eq {
@@ -37,15 +37,20 @@ where
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SubscriptionEventSequence {
     session_epoch: SessionEpoch,
-    lane: ExchangeLane,
     next_sequence: LaneSequence,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SubscriptionEventPublisher<RequestPayload, ReplyPayload, EventPayload> {
-    short_header: ShortHeader,
+pub struct SubscriptionEventPublisher<Contract, RequestPayload, ReplyPayload, EventPayload>
+where
+    Contract: WireContract,
+{
+    event_route: WireRoute,
     sequence: SubscriptionEventSequence,
-    payload_types: PhantomData<(RequestPayload, ReplyPayload, EventPayload)>,
+    contract: PhantomData<fn() -> Contract>,
+    request_payload: PhantomData<fn() -> RequestPayload>,
+    reply_payload: PhantomData<fn() -> ReplyPayload>,
+    event_payload: PhantomData<fn() -> EventPayload>,
 }
 
 impl SubscriptionToken for SubscriptionTokenInner {
@@ -167,28 +172,19 @@ where
 }
 
 impl SubscriptionEventSequence {
-    pub const fn new(
-        session_epoch: SessionEpoch,
-        lane: ExchangeLane,
-        next_sequence: LaneSequence,
-    ) -> Self {
+    pub const fn new(session_epoch: SessionEpoch, next_sequence: LaneSequence) -> Self {
         Self {
             session_epoch,
-            lane,
             next_sequence,
         }
     }
 
     pub const fn acceptor(session_epoch: SessionEpoch) -> Self {
-        Self::new(session_epoch, ExchangeLane::Acceptor, LaneSequence::first())
+        Self::new(session_epoch, LaneSequence::first())
     }
 
     pub fn session_epoch(&self) -> SessionEpoch {
         self.session_epoch
-    }
-
-    pub fn lane(&self) -> ExchangeLane {
-        self.lane
     }
 
     pub fn next_sequence(&self) -> LaneSequence {
@@ -196,33 +192,37 @@ impl SubscriptionEventSequence {
     }
 
     pub fn next_identifier(&mut self) -> StreamEventIdentifier {
-        let identifier =
-            StreamEventIdentifier::new(self.session_epoch, self.lane, self.next_sequence);
+        let identifier = StreamEventIdentifier::acceptor(self.session_epoch, self.next_sequence);
         self.next_sequence = self.next_sequence.next();
         identifier
     }
 }
 
-impl<RequestPayload, ReplyPayload, EventPayload>
-    SubscriptionEventPublisher<RequestPayload, ReplyPayload, EventPayload>
+impl<Contract, RequestPayload, ReplyPayload, EventPayload>
+    SubscriptionEventPublisher<Contract, RequestPayload, ReplyPayload, EventPayload>
+where
+    Contract: WireContract,
 {
-    pub const fn new(short_header: ShortHeader, sequence: SubscriptionEventSequence) -> Self {
+    pub const fn new(event_route: WireRoute, sequence: SubscriptionEventSequence) -> Self {
         Self {
-            short_header,
+            event_route,
             sequence,
-            payload_types: PhantomData,
+            contract: PhantomData,
+            request_payload: PhantomData,
+            reply_payload: PhantomData,
+            event_payload: PhantomData,
         }
     }
 
-    pub const fn acceptor(short_header: ShortHeader, session_epoch: SessionEpoch) -> Self {
+    pub const fn acceptor(event_route: WireRoute, session_epoch: SessionEpoch) -> Self {
         Self::new(
-            short_header,
+            event_route,
             SubscriptionEventSequence::acceptor(session_epoch),
         )
     }
 
-    pub fn short_header(&self) -> ShortHeader {
-        self.short_header
+    pub fn event_route(&self) -> WireRoute {
+        self.event_route
     }
 
     pub fn sequence(&self) -> SubscriptionEventSequence {
@@ -233,12 +233,12 @@ impl<RequestPayload, ReplyPayload, EventPayload>
         &mut self,
         token: Token,
         event: EventPayload,
-    ) -> StreamingFrame<RequestPayload, ReplyPayload, EventPayload>
+    ) -> BoundStreamingFrame<Contract, RequestPayload, ReplyPayload, EventPayload>
     where
         Token: SubscriptionToken,
     {
-        StreamingFrame::with_short_header(
-            self.short_header,
+        BoundStreamingFrame::new(
+            self.event_route,
             StreamingFrameBody::SubscriptionEvent {
                 event_identifier: self.sequence.next_identifier(),
                 token: token.into_inner(),

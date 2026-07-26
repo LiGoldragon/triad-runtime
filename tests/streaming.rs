@@ -1,7 +1,10 @@
+use std::num::{NonZeroU16, NonZeroU32};
+
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use signal_frame::{
-    ExchangeLane, LaneSequence, SessionEpoch, ShortHeader, StreamingFrame, StreamingFrameBody,
-    SubscriptionTokenInner,
+    BoundStreamingFrame, ContractBinding, ContractId, ExchangeLane, LaneSequence, RootCode,
+    SessionEpoch, StreamingFrameBody, SubscriptionTokenInner, VariantCode, WireContract,
+    WireRevision, WireRoute,
 };
 use triad_runtime::{
     SubscriptionEventPublisher, SubscriptionEventSequence, SubscriptionRegistry, SubscriptionToken,
@@ -31,6 +34,17 @@ struct TestReply {
 struct TestEvent {
     label: String,
 }
+
+struct TestContract;
+
+impl WireContract for TestContract {
+    const BINDING: ContractBinding = ContractBinding::new(
+        ContractId::new(NonZeroU32::new(0x1020_3040).unwrap()),
+        WireRevision::new(NonZeroU16::new(7).unwrap()),
+    );
+}
+
+const EVENT_ROUTE: WireRoute = WireRoute::new(RootCode::new(0x91), VariantCode::new(0x2a));
 
 impl SubscriptionToken for TestSubscriptionToken {
     fn from_inner(inner: SubscriptionTokenInner) -> Self {
@@ -147,38 +161,41 @@ fn subscription_event_sequence_mints_monotonic_acceptor_identifiers() {
     let first = sequence.next_identifier();
     let second = sequence.next_identifier();
 
-    assert_eq!(first.session_epoch, SessionEpoch::new(7));
-    assert_eq!(first.lane, ExchangeLane::Acceptor);
-    assert_eq!(first.sequence, LaneSequence::first());
-    assert_eq!(second.sequence, LaneSequence::new(1));
+    assert_eq!(first.session_epoch(), SessionEpoch::new(7));
+    assert_eq!(first.lane(), ExchangeLane::Acceptor);
+    assert_eq!(first.sequence(), LaneSequence::first());
+    assert_eq!(second.session_epoch(), SessionEpoch::new(7));
+    assert_eq!(second.sequence(), LaneSequence::new(1));
     assert_eq!(sequence.next_sequence(), LaneSequence::new(2));
 }
 
 #[test]
-fn subscription_event_publisher_builds_signal_frame_streaming_events() {
-    let short_header = ShortHeader::new(0x0908_0706_0504_0302);
+fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
-    let mut publisher = SubscriptionEventPublisher::<TestRequest, TestReply, TestEvent>::acceptor(
-        short_header,
-        SessionEpoch::new(3),
-    );
+    let mut publisher =
+        SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::acceptor(
+            EVENT_ROUTE,
+            SessionEpoch::new(3),
+        );
 
     let frame = publisher.publish(token, TestEvent::new("commit"));
+    let _: &BoundStreamingFrame<TestContract, TestRequest, TestReply, TestEvent> = &frame;
     let bytes = frame.encode_length_prefixed().expect("encode frame");
-    let decoded =
-        StreamingFrame::<TestRequest, TestReply, TestEvent>::decode_length_prefixed(&bytes)
-            .expect("decode frame");
+    let decoded = BoundStreamingFrame::<TestContract, TestRequest, TestReply, TestEvent>::
+        decode_length_prefixed(&bytes)
+        .expect("decode frame");
 
-    assert_eq!(decoded.short_header(), short_header);
+    assert_eq!(decoded.short_header().binding(), TestContract::BINDING);
+    assert_eq!(decoded.short_header().route(), EVENT_ROUTE);
     match decoded.into_body() {
         StreamingFrameBody::SubscriptionEvent {
             event_identifier,
             token: decoded_token,
             event,
         } => {
-            assert_eq!(event_identifier.session_epoch, SessionEpoch::new(3));
-            assert_eq!(event_identifier.lane, ExchangeLane::Acceptor);
-            assert_eq!(event_identifier.sequence, LaneSequence::first());
+            assert_eq!(event_identifier.session_epoch(), SessionEpoch::new(3));
+            assert_eq!(event_identifier.lane(), ExchangeLane::Acceptor);
+            assert_eq!(event_identifier.sequence(), LaneSequence::first());
             assert_eq!(decoded_token, SubscriptionTokenInner::new(44));
             assert_eq!(event, TestEvent::new("commit"));
         }
@@ -190,8 +207,33 @@ fn subscription_event_publisher_builds_signal_frame_streaming_events() {
         StreamingFrameBody::SubscriptionEvent {
             event_identifier, ..
         } => {
-            assert_eq!(event_identifier.sequence, LaneSequence::new(1));
+            assert_eq!(event_identifier.sequence(), LaneSequence::new(1));
         }
         _ => panic!("expected subscription event"),
     }
+}
+
+#[test]
+fn replacing_a_stale_registration_keeps_only_the_latest_filter() {
+    let mut registry = SubscriptionRegistry::<TestSubscriptionToken, TestFilter>::new();
+    let token = TestSubscriptionToken(SubscriptionTokenInner::new(88));
+    registry.register_token(token, TestFilter::Label("stale"));
+    registry.register_token(token, TestFilter::Label("current"));
+
+    let mut stale_deliveries = Vec::new();
+    registry.publish_matching(
+        &TestEvent::new("stale"),
+        TestFilter::matches,
+        |token, _event| stale_deliveries.push(token),
+    );
+    assert!(stale_deliveries.is_empty());
+
+    let mut current_deliveries = Vec::new();
+    registry.publish_matching(
+        &TestEvent::new("current"),
+        TestFilter::matches,
+        |token, _event| current_deliveries.push(token),
+    );
+    assert_eq!(current_deliveries, vec![token]);
+    assert_eq!(registry.len(), 1);
 }

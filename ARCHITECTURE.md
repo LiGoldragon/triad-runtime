@@ -246,12 +246,21 @@ schema-declared open-subscription effect, unregisters tokens, and publishes
 matching events through caller-supplied filter and delivery closures.
 
 `SubscriptionEventSequence` owns `signal_frame::StreamEventIdentifier`
-generation for the daemon/acceptor lane. `SubscriptionEventPublisher<Input,
-Output, Event>` combines that sequence with a short header and produces real
-`signal_frame::StreamingFrame<Input, Output, Event>` values whose body is
-`StreamingFrameBody::SubscriptionEvent`. The publisher is generic over the
-schema-generated request, reply, and event roots; it never knows component
-event variants.
+generation for the daemon/acceptor lane. `SubscriptionEventPublisher<Contract,
+Input, Output, Event>` combines that sequence with the contract-local event
+`WireRoute` and produces
+`signal_frame::BoundStreamingFrame<Contract, Input, Output, Event>` values
+whose body is `StreamingFrameBody::SubscriptionEvent`. `Contract` implements
+`signal_frame::WireContract`, so the producer derives the nonzero contract and
+revision header and callers cannot inject an unbound or wrong-contract header.
+The publisher remains generic over the schema-generated request, reply, and
+event roots; it never knows component event variants.
+
+The 0.8 migration removes the unbound publisher API. Consumers add their
+generated contract marker as the first publisher type parameter and pass the
+event `WireRoute` to `new` or `acceptor`; raw `ShortHeader` construction and
+unbound `StreamingFrame` output have no compatibility path. Event identifier
+fields are read through `session_epoch()`, `lane()`, and `sequence()`.
 
 The runtime does not own stream policy. Schema declares which operations open
 streams and which event variants belong to streams; generated code exposes the
