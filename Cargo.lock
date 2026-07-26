@@ -262,7 +262,7 @@ dependencies = [
 [[package]]
 name = "kameo"
 version = "0.20.0"
-source = "git+https://github.com/LiGoldragon/kameo.git?branch=main#f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01"
+source = "git+https://github.com/LiGoldragon/kameo.git?rev=f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01#f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01"
 dependencies = [
  "downcast-rs",
  "dyn-clone",
@@ -276,7 +276,7 @@ dependencies = [
 [[package]]
 name = "kameo_macros"
 version = "0.20.0"
-source = "git+https://github.com/LiGoldragon/kameo.git?branch=main#f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01"
+source = "git+https://github.com/LiGoldragon/kameo.git?rev=f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01#f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01"
 dependencies = [
  "heck",
  "proc-macro2",
@@ -347,8 +347,8 @@ dependencies = [
 
 [[package]]
 name = "nota"
-version = "0.5.1"
-source = "git+https://github.com/LiGoldragon/nota.git?branch=main#bea7e2840ac2cf3e384f07b5c10eeb0890cead25"
+version = "0.9.0"
+source = "git+https://github.com/LiGoldragon/nota.git?rev=89dc3c85a9ff96d4e4d53accfd867df672cae5a8#89dc3c85a9ff96d4e4d53accfd867df672cae5a8"
 dependencies = [
  "nota-derive",
  "rkyv",
@@ -356,8 +356,8 @@ dependencies = [
 
 [[package]]
 name = "nota-derive"
-version = "0.3.0"
-source = "git+https://github.com/LiGoldragon/nota.git?branch=main#bea7e2840ac2cf3e384f07b5c10eeb0890cead25"
+version = "0.4.0"
+source = "git+https://github.com/LiGoldragon/nota.git?rev=89dc3c85a9ff96d4e4d53accfd867df672cae5a8#89dc3c85a9ff96d4e4d53accfd867df672cae5a8"
 dependencies = [
  "proc-macro2",
  "quote",
