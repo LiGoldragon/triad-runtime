@@ -1,5 +1,5 @@
 error[E0599]: no method named `clone` found for struct `SubscriptionEventPublisher<Contract, RequestPayload, ReplyPayload, EventPayload>` in the current scope
-  --> tests/ui/subscription_event_authority/publisher_clone.rs:22:32
+  --> tests/ui/subscription_event_authority/publisher_clone.rs:15:32
    |
-22 |     let _duplicate = publisher.clone();
+15 |     let _duplicate = publisher.clone();
    |                                ^^^^^ method not found in `SubscriptionEventPublisher<Contract, (), (), ()>`

@@ -1,8 +1,6 @@
-use signal_frame::{
-    ContractBinding, ContractId, RootCode, VariantCode, WireContract, WireRevision, WireRoute,
-};
+use signal_frame::{ContractBinding, ContractId, WireContract, WireRevision};
 use std::num::{NonZeroU16, NonZeroU32};
-use triad_runtime::{SubscriptionEventEpochAuthority, SubscriptionEventPublisher};
+use triad_runtime::SubscriptionEventPublisher;
 
 struct Contract;
 
@@ -13,11 +11,8 @@ impl WireContract for Contract {
     );
 }
 
-fn main() {
-    let mut authority = SubscriptionEventEpochAuthority::new(signal_frame::SessionEpoch::new(3));
-    let publisher = SubscriptionEventPublisher::<Contract, (), (), ()>::new(
-        WireRoute::new(RootCode::new(1), VariantCode::new(1)),
-        authority.reserve().unwrap(),
-    );
+fn duplicate(publisher: SubscriptionEventPublisher<Contract, (), (), ()>) {
     let _duplicate = publisher.clone();
 }
+
+fn main() {}

@@ -1,0 +1,11 @@
+error[E0599]: no method named `token_issuer` found for struct `SubscriptionRegistry<Token, Filter>` in the current scope
+  --> tests/ui/subscription_tokens/registry_clone.rs:19:37
+   |
+19 |     let _issuer_snapshot = registry.token_issuer();
+   |                                     ^^^^^^^^^^^^ private field, not a method
+
+error[E0599]: no method named `clone` found for struct `SubscriptionRegistry<Token, Filter>` in the current scope
+  --> tests/ui/subscription_tokens/registry_clone.rs:20:31
+   |
+20 |     let _duplicate = registry.clone();
+   |                               ^^^^^ method not found in `SubscriptionRegistry<Token, ()>`

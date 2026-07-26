@@ -25,7 +25,15 @@
         craneLib = (crane.mkLib pkgs).overrideToolchain toolchain;
         source = pkgs.lib.cleanSourceWith {
           src = ./.;
-          filter = path: type: craneLib.filterCargoSources path type;
+          filter = path: type:
+            let
+              relativePath =
+                pkgs.lib.removePrefix "${toString ./.}/" (toString path);
+            in
+            !(relativePath == "target"
+              || pkgs.lib.hasPrefix "target/" relativePath)
+            && (craneLib.filterCargoSources path type
+              || pkgs.lib.hasSuffix ".stderr" relativePath);
         };
         commonArguments = {
           src = source;

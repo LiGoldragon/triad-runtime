@@ -11,12 +11,10 @@ pub trait SubscriptionToken: Copy + Eq {
     fn into_inner(self) -> SubscriptionTokenInner;
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SubscriptionTokenIssuer {
-    next_value: u64,
+    next_value: Option<u64>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubscriptionRegistry<Token, Filter>
 where
     Token: SubscriptionToken,
@@ -34,9 +32,8 @@ where
     filter: Filter,
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct SubscriptionEventEpochAuthority {
-    next_epoch: Option<SessionEpoch>,
+pub struct SubscriptionEventEpochAuthority<Store> {
+    store: Store,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -44,10 +41,39 @@ pub struct SubscriptionEventEpoch {
     session_epoch: SessionEpoch,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
-pub enum SubscriptionEventEpochError {
+pub struct SubscriptionEventEpochReservation<'authority> {
+    authority: PhantomData<&'authority mut ()>,
+}
+
+pub trait SubscriptionEventEpochStore {
+    type Error;
+
+    /// Atomically advances durable reservation state before returning the epoch.
+    ///
+    /// A successful implementation must make the advance durable before it
+    /// calls [`SubscriptionEventEpochReservation::commit`]. Skipping an epoch
+    /// after a crash is safe; returning an epoch whose advance was not made
+    /// durable can reuse an event identifier.
+    fn reserve_next_epoch(
+        &mut self,
+        reservation: SubscriptionEventEpochReservation<'_>,
+    ) -> Result<SubscriptionEventEpoch, SubscriptionEventEpochError<Self::Error>>;
+}
+
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SubscriptionEventEpochError<StoreError> {
     #[error("subscription event epoch space is exhausted")]
     EpochExhausted,
+    #[error("subscription event epoch store rejected the reservation")]
+    Store(StoreError),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+pub enum SubscriptionTokenError {
+    #[error("subscription token space is exhausted")]
+    TokenExhausted,
+    #[error("minted subscription token collides with a live registration")]
+    TokenCollision,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
@@ -87,28 +113,34 @@ impl SubscriptionToken for SubscriptionTokenInner {
 
 impl Default for SubscriptionTokenIssuer {
     fn default() -> Self {
-        Self::new(1)
+        Self::new()
     }
 }
 
 impl SubscriptionTokenIssuer {
-    pub const fn new(first_value: u64) -> Self {
+    /// Creates a fresh issuer whose first token has the established value `1`.
+    pub const fn new() -> Self {
         Self {
-            next_value: first_value,
+            next_value: Some(1),
         }
     }
 
-    pub fn next_value(&self) -> u64 {
-        self.next_value
+    #[cfg(test)]
+    const fn from_next_value(next_value: u64) -> Self {
+        Self {
+            next_value: Some(next_value),
+        }
     }
 
-    pub fn issue<Token>(&mut self) -> Token
+    pub fn mint<Token>(&mut self) -> Result<Token, SubscriptionTokenError>
     where
         Token: SubscriptionToken,
     {
-        let token = Token::from_inner(SubscriptionTokenInner::new(self.next_value));
-        self.next_value = self.next_value.wrapping_add(1);
-        token
+        let Some(value) = self.next_value else {
+            return Err(SubscriptionTokenError::TokenExhausted);
+        };
+        self.next_value = value.checked_add(1);
+        Ok(Token::from_inner(SubscriptionTokenInner::new(value)))
     }
 }
 
@@ -126,24 +158,23 @@ where
     Token: SubscriptionToken,
 {
     pub fn new() -> Self {
-        Self::with_token_issuer(SubscriptionTokenIssuer::default())
-    }
-
-    pub fn with_token_issuer(token_issuer: SubscriptionTokenIssuer) -> Self {
         Self {
             subscriptions: Vec::new(),
-            token_issuer,
+            token_issuer: SubscriptionTokenIssuer::new(),
         }
     }
 
-    pub fn token_issuer(&self) -> SubscriptionTokenIssuer {
-        self.token_issuer
-    }
-
-    pub fn register(&mut self, filter: Filter) -> Token {
-        let token = self.token_issuer.issue();
+    pub fn register(&mut self, filter: Filter) -> Result<Token, SubscriptionTokenError> {
+        let token = self.token_issuer.mint()?;
+        if self
+            .subscriptions
+            .iter()
+            .any(|subscription| subscription.token == token)
+        {
+            return Err(SubscriptionTokenError::TokenCollision);
+        }
         self.subscriptions.push(Subscription { token, filter });
-        token
+        Ok(token)
     }
 
     pub fn register_token(&mut self, token: Token, filter: Filter) {
@@ -193,36 +224,30 @@ where
     }
 }
 
-impl SubscriptionEventEpochAuthority {
-    /// Begins reserving epochs at `first_epoch`.
-    pub const fn new(first_epoch: SessionEpoch) -> Self {
-        Self {
-            next_epoch: Some(first_epoch),
-        }
+impl<'authority> SubscriptionEventEpochReservation<'authority> {
+    /// Completes the store's reservation after its state advance is durable.
+    pub fn commit(self, session_epoch: SessionEpoch) -> SubscriptionEventEpoch {
+        SubscriptionEventEpoch { session_epoch }
+    }
+}
+
+impl<Store> SubscriptionEventEpochAuthority<Store>
+where
+    Store: SubscriptionEventEpochStore,
+{
+    /// Takes ownership of the stream identity's single reservation store.
+    pub const fn new(store: Store) -> Self {
+        Self { store }
     }
 
-    /// Restores the persisted next epoch for this one application-owned authority.
-    ///
-    /// The application must persist [`Self::next_epoch`] and ensure that it has
-    /// only one live authority for a stream identity. Persist the returned next
-    /// epoch before using a newly reserved publisher after a crash boundary.
-    pub const fn restore(next_epoch: Option<SessionEpoch>) -> Self {
-        Self { next_epoch }
-    }
-
-    /// Returns the state that the application persists to restore this authority.
-    pub const fn next_epoch(&self) -> Option<SessionEpoch> {
-        self.next_epoch
-    }
-
-    /// Reserves one epoch for a single subscription-event publisher.
-    pub fn reserve(&mut self) -> Result<SubscriptionEventEpoch, SubscriptionEventEpochError> {
-        let Some(session_epoch) = self.next_epoch else {
-            return Err(SubscriptionEventEpochError::EpochExhausted);
-        };
-
-        self.next_epoch = session_epoch.value().checked_add(1).map(SessionEpoch::new);
-        Ok(SubscriptionEventEpoch { session_epoch })
+    /// Reserves one epoch through the owning store for one publisher.
+    pub fn reserve(
+        &mut self,
+    ) -> Result<SubscriptionEventEpoch, SubscriptionEventEpochError<Store::Error>> {
+        self.store
+            .reserve_next_epoch(SubscriptionEventEpochReservation {
+                authority: PhantomData,
+            })
     }
 }
 
@@ -294,6 +319,43 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subscription_token_issuer_issues_maximum_once_then_stays_exhausted() {
+        let mut issuer = SubscriptionTokenIssuer::from_next_value(u64::MAX);
+
+        assert_eq!(
+            issuer.mint::<SubscriptionTokenInner>(),
+            Ok(SubscriptionTokenInner::new(u64::MAX))
+        );
+        assert_eq!(
+            issuer.mint::<SubscriptionTokenInner>(),
+            Err(SubscriptionTokenError::TokenExhausted)
+        );
+        assert_eq!(
+            issuer.mint::<SubscriptionTokenInner>(),
+            Err(SubscriptionTokenError::TokenExhausted)
+        );
+    }
+
+    #[test]
+    fn subscription_registry_rejects_a_live_minted_token_collision() {
+        let token = SubscriptionTokenInner::new(u64::MAX);
+        let mut registry = SubscriptionRegistry {
+            subscriptions: vec![Subscription { token, filter: () }],
+            token_issuer: SubscriptionTokenIssuer::from_next_value(u64::MAX),
+        };
+
+        assert_eq!(
+            registry.register(()),
+            Err(SubscriptionTokenError::TokenCollision)
+        );
+        assert_eq!(registry.len(), 1);
+        assert_eq!(
+            registry.register(()),
+            Err(SubscriptionTokenError::TokenExhausted)
+        );
+    }
 
     #[test]
     fn subscription_event_sequence_issues_maximum_once_then_stays_exhausted() {

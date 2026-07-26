@@ -239,18 +239,35 @@ deployment parallelism.
 `streaming.rs` owns reusable subscription mechanics above the `signal-frame`
 wire kernel. `SubscriptionToken` is the bridge trait for generated
 component-local token newtypes. `SubscriptionTokenIssuer` mints monotonically
-increasing `signal_frame::SubscriptionTokenInner` values and wraps them in the
-generated token type. `SubscriptionRegistry<Token, Filter>` stores live
-subscriptions, issues tokens, accepts already-minted tokens from a
-schema-declared open-subscription effect, unregisters tokens, and publishes
-matching events through caller-supplied filter and delivery closures.
+increasing `signal_frame::SubscriptionTokenInner` values from the established
+first value `1` and wraps them in the generated token type. The issuer is a
+linear, non-cloneable authority: it exposes neither its next value nor a raw
+seed/restore constructor, and `u64::MAX` is returned once before stable
+`SubscriptionTokenError::TokenExhausted`. `SubscriptionRegistry<Token, Filter>`
+owns its issuer, stores live subscriptions, issues tokens, accepts
+already-minted tokens from a schema-declared open-subscription effect,
+unregisters tokens, and publishes matching events through caller-supplied
+filter and delivery closures. `register` and `mint` return typed results; a
+minted value that collides with an externally registered live token is consumed
+and reported as `TokenCollision`, never inserted or reused. Already-minted
+registration still replaces the stale registration for that same token.
 
-`SubscriptionEventEpochAuthority` is the single application-owned authority
-for subscription-event epochs. It reserves a non-cloneable, one-use
-`SubscriptionEventEpoch` for each publisher. The application persists
-`next_epoch()` and restores it with `restore(...)`; it is responsible for
-persisting a reservation before its publisher is used after a crash boundary
-and for never running two authorities for the same stream identity.
+`SubscriptionRegistry` is also non-cloneable. A component with several tasks
+must give an actor sole ownership or share one synchronized
+`Arc<Mutex<SubscriptionRegistry<...>>>` handle. Copying registry values or
+issuer state is not a supported sharing model.
+
+`SubscriptionEventEpochAuthority<Store>` takes ownership of the stream
+identity's `SubscriptionEventEpochStore`. The store's
+`reserve_next_epoch(&mut self, reservation)` contract atomically and durably
+advances its reservation state before it commits the supplied one-use
+capability into a private, non-cloneable `SubscriptionEventEpoch`. Skipping a
+reserved epoch after a crash is safe; returning before the advance is durable
+can reuse identifiers and violates the store contract. The runtime deliberately
+provides no durable store, raw epoch constructor, scalar checkpoint,
+`next_epoch`, or `restore` API. The application or Spirit persistence owner
+supplies the one authoritative store for each stream identity and reconstructs
+an authority by reopening that same store, not by copying a scalar epoch.
 `SubscriptionEventPublisher<Contract, Input, Output, Event>` consumes that
 reservation, privately owns its acceptor-lane sequence, and produces
 `signal_frame::BoundStreamingFrame<Contract, Input, Output, Event>` values
@@ -268,12 +285,13 @@ generated contract marker as the first publisher type parameter and pass the
 event `WireRoute` to `new`; raw `ShortHeader` construction and unbound
 `StreamingFrame` output have no compatibility path. Consumers now obtain the
 second `new` argument from an application-owned
-`SubscriptionEventEpochAuthority`, handle `SubscriptionEventEpochError` at
-reservation and `SubscriptionPublishError` from `publish`, and restore only
-the persisted next epoch with `SubscriptionEventEpochAuthority::restore`.
-Restoring stale state or running concurrent authorities can reintroduce duplicate
-epochs and remains the application's persistence and single-authority
-responsibility. Event identifier fields are read through `session_epoch()`,
+`SubscriptionEventEpochAuthority<Store>`, handle the generic
+`SubscriptionEventEpochError<Store::Error>` at reservation and
+`SubscriptionPublishError` from `publish`, and implement the durable atomic
+reservation contract at the persistence boundary. Consumers of the rejected
+scalar API must delete `next_epoch()`/`restore(...)` checkpointing and open the
+same persisted store when restarting. No publisher constructor accepts
+`SessionEpoch`; event identifier fields are read through `session_epoch()`,
 `lane()`, and `sequence()`.
 
 The runtime does not own stream policy. Schema declares which operations open

@@ -1,0 +1,11 @@
+error[E0599]: no method named `next_value` found for struct `SubscriptionTokenIssuer` in the current scope
+ --> tests/ui/subscription_tokens/issuer_clone.rs:5:28
+  |
+5 |     let _snapshot = issuer.next_value();
+  |                            ^^^^^^^^^^ private field, not a method
+
+error[E0599]: no method named `clone` found for struct `SubscriptionTokenIssuer` in the current scope
+ --> tests/ui/subscription_tokens/issuer_clone.rs:6:29
+  |
+6 |     let _duplicate = issuer.clone();
+  |                             ^^^^^ method not found in `SubscriptionTokenIssuer`

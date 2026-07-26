@@ -56,8 +56,9 @@ pub use runner::{
 };
 pub use streaming::{
     Subscription, SubscriptionEventEpoch, SubscriptionEventEpochAuthority,
-    SubscriptionEventEpochError, SubscriptionEventPublisher, SubscriptionPublishError,
-    SubscriptionRegistry, SubscriptionToken, SubscriptionTokenIssuer,
+    SubscriptionEventEpochError, SubscriptionEventEpochReservation, SubscriptionEventEpochStore,
+    SubscriptionEventPublisher, SubscriptionPublishError, SubscriptionRegistry, SubscriptionToken,
+    SubscriptionTokenError, SubscriptionTokenIssuer,
 };
 pub use tcp::{BoundTcpListenerDaemon, TcpListenerDaemon};
 pub use trace::{

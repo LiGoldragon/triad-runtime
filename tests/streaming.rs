@@ -1,4 +1,8 @@
-use std::num::{NonZeroU16, NonZeroU32};
+use std::{
+    cell::RefCell,
+    num::{NonZeroU16, NonZeroU32},
+    rc::Rc,
+};
 
 use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
 use signal_frame::{
@@ -7,7 +11,8 @@ use signal_frame::{
     WireRevision, WireRoute,
 };
 use triad_runtime::{
-    SubscriptionEventEpochAuthority, SubscriptionEventEpochError, SubscriptionEventPublisher,
+    SubscriptionEventEpochAuthority, SubscriptionEventEpochError,
+    SubscriptionEventEpochReservation, SubscriptionEventEpochStore, SubscriptionEventPublisher,
     SubscriptionRegistry, SubscriptionToken, SubscriptionTokenIssuer,
 };
 
@@ -36,6 +41,16 @@ struct TestEvent {
 }
 
 struct TestContract;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TestEpochStoreError {
+    Unavailable,
+}
+
+struct TestEpochStore {
+    state: Rc<RefCell<Option<SessionEpoch>>>,
+    fail_next_reservation: bool,
+}
 
 impl WireContract for TestContract {
     const BINDING: ContractBinding = ContractBinding::new(
@@ -73,24 +88,71 @@ impl TestFilter {
     }
 }
 
+impl TestEpochStore {
+    fn new(state: Rc<RefCell<Option<SessionEpoch>>>) -> Self {
+        Self {
+            state,
+            fail_next_reservation: false,
+        }
+    }
+
+    fn failing(state: Rc<RefCell<Option<SessionEpoch>>>) -> Self {
+        Self {
+            state,
+            fail_next_reservation: true,
+        }
+    }
+}
+
+impl SubscriptionEventEpochStore for TestEpochStore {
+    type Error = TestEpochStoreError;
+
+    fn reserve_next_epoch(
+        &mut self,
+        reservation: SubscriptionEventEpochReservation<'_>,
+    ) -> Result<triad_runtime::SubscriptionEventEpoch, SubscriptionEventEpochError<Self::Error>>
+    {
+        if self.fail_next_reservation {
+            self.fail_next_reservation = false;
+            return Err(SubscriptionEventEpochError::Store(
+                TestEpochStoreError::Unavailable,
+            ));
+        }
+
+        let mut state = self.state.borrow_mut();
+        let Some(epoch) = *state else {
+            return Err(SubscriptionEventEpochError::EpochExhausted);
+        };
+        *state = epoch.value().checked_add(1).map(SessionEpoch::new);
+        Ok(reservation.commit(epoch))
+    }
+}
+
+fn epoch_state(first_epoch: u64) -> Rc<RefCell<Option<SessionEpoch>>> {
+    Rc::new(RefCell::new(Some(SessionEpoch::new(first_epoch))))
+}
+
 #[test]
 fn subscription_token_issuer_wraps_inner_tokens() {
-    let mut issuer = SubscriptionTokenIssuer::new(9);
+    let mut issuer = SubscriptionTokenIssuer::new();
 
-    let first: TestSubscriptionToken = issuer.issue();
-    let second: TestSubscriptionToken = issuer.issue();
+    let first: TestSubscriptionToken = issuer.mint().expect("mint first token");
+    let second: TestSubscriptionToken = issuer.mint().expect("mint second token");
 
-    assert_eq!(first.into_inner(), SubscriptionTokenInner::new(9));
-    assert_eq!(second.into_inner(), SubscriptionTokenInner::new(10));
-    assert_eq!(issuer.next_value(), 11);
+    assert_eq!(first.into_inner(), SubscriptionTokenInner::new(1));
+    assert_eq!(second.into_inner(), SubscriptionTokenInner::new(2));
 }
 
 #[test]
 fn subscription_registry_registers_unregisters_and_delivers_matching_events() {
     let mut registry = SubscriptionRegistry::<TestSubscriptionToken, TestFilter>::new();
-    let all = registry.register(TestFilter::All);
-    let beta = registry.register(TestFilter::Label("beta"));
-    let gamma = registry.register(TestFilter::Label("gamma"));
+    let all = registry.register(TestFilter::All).expect("register all");
+    let beta = registry
+        .register(TestFilter::Label("beta"))
+        .expect("register beta");
+    let gamma = registry
+        .register(TestFilter::Label("gamma"))
+        .expect("register gamma");
 
     assert_eq!(registry.len(), 3);
     assert!(!registry.is_empty());
@@ -157,7 +219,7 @@ fn subscription_registry_can_register_an_already_minted_token() {
 #[test]
 fn subscription_event_authority_reserves_distinct_epochs_and_publishers_start_sequences() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
-    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(7));
+    let mut authority = SubscriptionEventEpochAuthority::new(TestEpochStore::new(epoch_state(7)));
     let mut first =
         SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
@@ -201,7 +263,7 @@ fn subscription_event_authority_reserves_distinct_epochs_and_publishers_start_se
 #[test]
 fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
-    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(3));
+    let mut authority = SubscriptionEventEpochAuthority::new(TestEpochStore::new(epoch_state(3)));
     let mut publisher =
         SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
@@ -250,7 +312,8 @@ fn subscription_event_publisher_builds_exactly_bound_streaming_events() {
 #[test]
 fn subscription_event_authority_exhausts_after_issuing_maximum_epoch() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
-    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(u64::MAX));
+    let state = epoch_state(u64::MAX);
+    let mut authority = SubscriptionEventEpochAuthority::new(TestEpochStore::new(state.clone()));
     let mut publisher =
         SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
@@ -270,29 +333,36 @@ fn subscription_event_authority_exhausts_after_issuing_maximum_epoch() {
         event_identifier.session_epoch(),
         SessionEpoch::new(u64::MAX)
     );
-    assert_eq!(authority.next_epoch(), None);
+    assert_eq!(*state.borrow(), None);
     assert_eq!(
         authority.reserve(),
         Err(SubscriptionEventEpochError::EpochExhausted)
     );
-    assert_eq!(authority.next_epoch(), None);
+    assert_eq!(
+        authority.reserve(),
+        Err(SubscriptionEventEpochError::EpochExhausted)
+    );
+    assert_eq!(*state.borrow(), None);
 }
 
 #[test]
-fn subscription_event_authority_restores_the_persisted_next_epoch() {
+fn subscription_event_authority_restart_reuses_the_same_store_state() {
     let token = TestSubscriptionToken(SubscriptionTokenInner::new(44));
-    let mut authority = SubscriptionEventEpochAuthority::new(SessionEpoch::new(3));
+    let persisted_state = epoch_state(3);
+    let mut authority =
+        SubscriptionEventEpochAuthority::new(TestEpochStore::new(persisted_state.clone()));
     let mut before_restart =
         SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
             authority.reserve().expect("reserve pre-restart epoch"),
         );
-    let persisted_next_epoch = authority.next_epoch();
-    let mut restored = SubscriptionEventEpochAuthority::restore(persisted_next_epoch);
+    drop(authority);
+    let mut restarted =
+        SubscriptionEventEpochAuthority::new(TestEpochStore::new(persisted_state.clone()));
     let mut after_restart =
         SubscriptionEventPublisher::<TestContract, TestRequest, TestReply, TestEvent>::new(
             EVENT_ROUTE,
-            restored.reserve().expect("reserve post-restart epoch"),
+            restarted.reserve().expect("reserve post-restart epoch"),
         );
 
     let before_restart = before_restart
@@ -326,6 +396,26 @@ fn subscription_event_authority_restores_the_persisted_next_epoch() {
     );
     assert_eq!(before_restart_identifier.sequence(), LaneSequence::first());
     assert_eq!(after_restart_identifier.sequence(), LaneSequence::first());
+}
+
+#[test]
+fn subscription_event_authority_propagates_typed_store_errors() {
+    let state = epoch_state(9);
+    let mut authority =
+        SubscriptionEventEpochAuthority::new(TestEpochStore::failing(state.clone()));
+
+    assert_eq!(
+        authority.reserve(),
+        Err(SubscriptionEventEpochError::Store(
+            TestEpochStoreError::Unavailable
+        ))
+    );
+    assert_eq!(*state.borrow(), Some(SessionEpoch::new(9)));
+
+    authority
+        .reserve()
+        .expect("reserve after transient failure");
+    assert_eq!(*state.borrow(), Some(SessionEpoch::new(10)));
 }
 
 #[test]
