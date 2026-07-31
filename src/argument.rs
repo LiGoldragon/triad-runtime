@@ -9,8 +9,8 @@ pub struct ComponentCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ComponentArgument {
-    InlineNota(InlineNota),
-    NotaFile(NotaFile),
+    InlineDotos(InlineDotos),
+    DotosFile(DotosFile),
     SignalFile(SignalFile),
 }
 
@@ -21,7 +21,7 @@ enum RawArgument {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InlineNota {
+pub struct InlineDotos {
     text: String,
 }
 
@@ -31,7 +31,7 @@ struct InlineText {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NotaFile {
+pub struct DotosFile {
     path: PathBuf,
 }
 
@@ -69,15 +69,15 @@ impl ComponentCommand {
         }
     }
 
-    /// The `--pretty` flag every NOTA-printing CLI honors: a request to reflow
+    /// The `--pretty` flag every DOTOS-printing CLI honors: a request to reflow
     /// the reply for reading. Parsing it here keeps the flag out of each CLI's
-    /// operand handling and adds no NOTA dependency to the shared harness, so a
-    /// daemon build that never enables `nota-text` still carries no NOTA code.
+    /// operand handling and adds no DOTOS dependency to the shared harness, so a
+    /// daemon build that never enables `dotos-text` still carries no DOTOS code.
     const PRETTY_FLAG: &'static str = "--pretty";
 
-    /// Whether the caller asked for readable NOTA output with `--pretty`.
+    /// Whether the caller asked for readable DOTOS output with `--pretty`.
     ///
-    /// A CLI passes this to `nota::NotaOutputForm::from_pretty_requested` at its
+    /// A CLI passes this to `dotos::DotosOutputForm::from_pretty_requested` at its
     /// print site; the daemon paths ignore it.
     pub fn pretty_requested(&self) -> bool {
         self.arguments
@@ -90,21 +90,21 @@ impl ComponentCommand {
     }
 
     /// The positional arguments, with any recognized flag such as `--pretty`
-    /// removed, so the single-argument rule counts only real NOTA operands.
+    /// removed, so the single-argument rule counts only real DOTOS operands.
     fn operands(&self) -> impl Iterator<Item = &String> {
         self.arguments
             .iter()
             .filter(|argument| *argument != Self::PRETTY_FLAG)
     }
 
-    pub fn nota_argument(&self) -> Result<ComponentArgument, ArgumentError> {
+    pub fn dotos_argument(&self) -> Result<ComponentArgument, ArgumentError> {
         match self.raw_argument()? {
-            RawArgument::InlineText(text) => Ok(ComponentArgument::InlineNota(InlineNota::new(
+            RawArgument::InlineText(text) => Ok(ComponentArgument::InlineDotos(InlineDotos::new(
                 text.into_text(),
             ))),
-            RawArgument::FilePath(path) => {
-                Ok(ComponentArgument::NotaFile(NotaFile::new(path.into_path())))
-            }
+            RawArgument::FilePath(path) => Ok(ComponentArgument::DotosFile(DotosFile::new(
+                path.into_path(),
+            ))),
         }
     }
 
@@ -112,7 +112,7 @@ impl ComponentCommand {
         match self.raw_argument()? {
             RawArgument::InlineText(_) => Err(ArgumentError::ExpectedSignalFile),
             RawArgument::FilePath(path) => {
-                if path.is_nota_file() {
+                if path.is_dotos_file() {
                     return Err(ArgumentError::ExpectedSignalFile);
                 }
                 Ok(ComponentArgument::SignalFile(SignalFile::new(
@@ -134,24 +134,24 @@ impl ComponentCommand {
 }
 
 impl ComponentArgument {
-    pub fn into_inline_nota(self) -> Option<InlineNota> {
+    pub fn into_inline_dotos(self) -> Option<InlineDotos> {
         match self {
-            Self::InlineNota(argument) => Some(argument),
-            Self::NotaFile(_) | Self::SignalFile(_) => None,
+            Self::InlineDotos(argument) => Some(argument),
+            Self::DotosFile(_) | Self::SignalFile(_) => None,
         }
     }
 
-    pub fn into_nota_file(self) -> Option<NotaFile> {
+    pub fn into_dotos_file(self) -> Option<DotosFile> {
         match self {
-            Self::NotaFile(argument) => Some(argument),
-            Self::InlineNota(_) | Self::SignalFile(_) => None,
+            Self::DotosFile(argument) => Some(argument),
+            Self::InlineDotos(_) | Self::SignalFile(_) => None,
         }
     }
 
     pub fn into_signal_file(self) -> Option<SignalFile> {
         match self {
             Self::SignalFile(argument) => Some(argument),
-            Self::InlineNota(_) | Self::NotaFile(_) => None,
+            Self::InlineDotos(_) | Self::DotosFile(_) => None,
         }
     }
 }
@@ -166,7 +166,7 @@ impl RawArgument {
     }
 }
 
-impl InlineNota {
+impl InlineDotos {
     fn new(text: impl Into<String>) -> Self {
         Self { text: text.into() }
     }
@@ -190,7 +190,7 @@ impl InlineText {
     }
 }
 
-impl NotaFile {
+impl DotosFile {
     fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }
@@ -223,11 +223,11 @@ impl ArgumentFilePath {
         Self { path: path.into() }
     }
 
-    fn is_nota_file(&self) -> bool {
+    fn is_dotos_file(&self) -> bool {
         self.path
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension == "nota")
+            .is_some_and(|extension| extension == "dotos")
     }
 
     fn into_path(self) -> PathBuf {

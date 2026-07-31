@@ -16,12 +16,12 @@
 //! enums in `spirit/src/schema/nexus.rs` — the types this frame replaces:
 //!
 //! ```ignore
-//! #[cfg_attr(feature = "nota-text", derive(nota::NotaDecode, nota::NotaEncode))]
+//! #[cfg_attr(feature = "dotos-text", derive(dotos::DotosDecode, dotos::DotosEncode))]
 //! #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 //! ```
 //!
 //! No `#[rkyv(...)]` / `#[archive(...)]` bound attributes, no `omit_bounds`,
-//! no explicit `where`: the rkyv 0.8 derive and the nota derive each
+//! no explicit `where`: the rkyv 0.8 derive and the dotos derive each
 //! synthesise their own per-parameter bounds, so the bare stack composes over
 //! a multi-parameter generic enum without help. See the module test suite for
 //! the proof.
@@ -33,7 +33,7 @@ use crate::NextStep;
 /// payload. A component with fewer legs binds an absent leg to a derivable
 /// stand-in payload (the fixed-arity fallback); binding it to the uninhabitable
 /// `Never` does not compile under the wire-derive stack — see `Never`.
-#[cfg_attr(feature = "nota-text", derive(nota::NotaDecode, nota::NotaEncode))]
+#[cfg_attr(feature = "dotos-text", derive(dotos::DotosDecode, dotos::DotosEncode))]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Work<Event, Write, Read, Effect> {
     SignalArrived(Event),
@@ -46,7 +46,7 @@ pub enum Work<Event, Write, Read, Effect> {
 /// command a side effect, or continue with further work. The `Continuation`
 /// parameter is the component's own `Work` instantiation, kept as a free
 /// parameter so the frame stays acyclic at the type level.
-#[cfg_attr(feature = "nota-text", derive(nota::NotaDecode, nota::NotaEncode))]
+#[cfg_attr(feature = "dotos-text", derive(dotos::DotosDecode, dotos::DotosEncode))]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Action<Reply, Write, Read, Effect, Continuation> {
     ReplyToSignal(Reply),

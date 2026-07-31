@@ -23,7 +23,7 @@ pub mod workers;
 pub use kameo;
 
 pub use argument::{
-    ArgumentError, ComponentArgument, ComponentCommand, InlineNota, NotaFile, SignalFile,
+    ArgumentError, ComponentArgument, ComponentCommand, DotosFile, InlineDotos, SignalFile,
 };
 pub use async_runtime::{
     AcceptedConnection, AcquireRequestPermit, AsyncConnectionRuntime, AsyncListenerError,

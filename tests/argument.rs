@@ -2,28 +2,28 @@ use tempfile::TempDir;
 use triad_runtime::{ArgumentError, ComponentArgument, ComponentCommand};
 
 #[test]
-fn command_classifies_inline_nota_text_for_text_clients() {
+fn command_classifies_inline_dotos_text_for_text_clients() {
     let command = ComponentCommand::from_arguments(["(Record [payload])"]);
 
-    let argument = command.nota_argument().expect("nota argument");
+    let argument = command.dotos_argument().expect("dotos argument");
 
     assert_eq!(
-        argument.into_inline_nota().expect("inline nota").as_str(),
+        argument.into_inline_dotos().expect("inline dotos").as_str(),
         "(Record [payload])"
     );
 }
 
 #[test]
-fn command_classifies_existing_file_as_nota_file_for_text_clients() {
+fn command_classifies_existing_file_as_dotos_file_for_text_clients() {
     let directory = TempDir::new().expect("tempdir");
-    let path = directory.path().join("input.nota");
+    let path = directory.path().join("input.dotos");
     std::fs::write(&path, "(Record [payload])").expect("write input");
     let command = ComponentCommand::from_arguments([path.display().to_string()]);
 
-    let argument = command.nota_argument().expect("nota file argument");
+    let argument = command.dotos_argument().expect("dotos file argument");
 
     assert_eq!(
-        argument.into_nota_file().expect("nota file").as_path(),
+        argument.into_dotos_file().expect("dotos file").as_path(),
         path.as_path()
     );
 }
@@ -48,10 +48,10 @@ fn command_classifies_existing_file_as_signal_file_for_daemons() {
 #[test]
 fn command_rejects_zero_or_multiple_arguments() {
     let missing = ComponentCommand::from_arguments(Vec::<String>::new())
-        .nota_argument()
+        .dotos_argument()
         .expect_err("missing argument");
     let multiple = ComponentCommand::from_arguments(["one", "two"])
-        .nota_argument()
+        .dotos_argument()
         .expect_err("multiple arguments");
 
     assert!(matches!(missing, ArgumentError::ArgumentCount { count: 0 }));
@@ -73,21 +73,21 @@ fn daemon_argument_rejects_inline_text() {
 }
 
 #[test]
-fn daemon_argument_rejects_nota_file() {
+fn daemon_argument_rejects_dotos_file() {
     let directory = TempDir::new().expect("tempdir");
-    let path = directory.path().join("configuration.nota");
+    let path = directory.path().join("configuration.dotos");
     std::fs::write(&path, "(BindingSurface)").expect("write input");
     let command = ComponentCommand::from_arguments([path.display().to_string()]);
 
     let error = command
         .signal_file_argument()
-        .expect_err("daemon rejects a NOTA file path");
+        .expect_err("daemon rejects a DOTOS file path");
 
     assert!(matches!(error, ArgumentError::ExpectedSignalFile));
 }
 
 #[test]
-fn pretty_flag_is_recognized_and_removed_from_the_nota_operand() {
+fn pretty_flag_is_recognized_and_removed_from_the_dotos_operand() {
     let plain = ComponentCommand::from_arguments(["(Record [payload])"]);
     assert!(!plain.pretty_requested());
 
@@ -96,10 +96,10 @@ fn pretty_flag_is_recognized_and_removed_from_the_nota_operand() {
     assert_eq!(pretty.argument_count(), 1);
     assert_eq!(
         pretty
-            .nota_argument()
-            .expect("nota argument")
-            .into_inline_nota()
-            .expect("inline nota")
+            .dotos_argument()
+            .expect("dotos argument")
+            .into_inline_dotos()
+            .expect("inline dotos")
             .as_str(),
         "(Record [payload])"
     );
@@ -108,7 +108,7 @@ fn pretty_flag_is_recognized_and_removed_from_the_nota_operand() {
 #[test]
 fn pretty_flag_does_not_relax_the_single_argument_rule() {
     let error = ComponentCommand::from_arguments(["--pretty", "one", "two"])
-        .nota_argument()
+        .dotos_argument()
         .expect_err("two operands remain an error even with --pretty");
 
     assert!(matches!(error, ArgumentError::ArgumentCount { count: 2 }));
@@ -118,7 +118,7 @@ fn pretty_flag_does_not_relax_the_single_argument_rule() {
 fn component_argument_variants_are_distinct() {
     let command = ComponentCommand::from_arguments(["(Record [payload])"]);
 
-    let argument = command.nota_argument().expect("nota argument");
+    let argument = command.dotos_argument().expect("dotos argument");
 
-    assert!(matches!(argument, ComponentArgument::InlineNota(_)));
+    assert!(matches!(argument, ComponentArgument::InlineDotos(_)));
 }

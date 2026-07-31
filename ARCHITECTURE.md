@@ -22,14 +22,14 @@ The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runne
 
 Cross-host transport is a tailnet-bound TCP listener in this crate, reusing the length-prefixed frame codec, with peer identity as a typed closed sum distinguishing kernel-vouched Unix-socket peers from tailnet TCP peers. Ssh-forwarded sockets are rejected as the transport shape. Per Spirit `rj9y` (Decision, High).
 
-Component binaries share the single-argument rule through `ComponentCommand`. Daemons use `signal_file_argument()` and accept only a signal-encoded/rkyv file path; inline NOTA text and `.nota` paths are rejected before component-specific decoding. Per Spirit record `pjvv`.
+Component binaries share the single-argument rule through `ComponentCommand`. Daemons use `signal_file_argument()` and accept only a signal-encoded/rkyv file path; inline DOTOS text and `.dotos` paths are rejected before component-specific decoding. Per Spirit record `pjvv`.
 
 ## Frame Runtime
 
 `LengthPrefixedCodec` owns the generic binary envelope used by runtime
 transports: a four-byte big-endian body length followed by exactly that many
 payload bytes. `FrameBody` is intentionally just bytes. The codec does not
-know about schema roots, trace events, signal frames, NOTA, or rkyv archive
+know about schema roots, trace events, signal frames, DOTOS, or rkyv archive
 layout; those belong to the caller.
 
 This replaces the old pattern where trace transport, signal transport, and
@@ -116,15 +116,15 @@ both instantiations when a component serves both transports.
 argv slice, verifies exactly one component argument, and classifies it as a
 `ComponentArgument`:
 
-- `InlineNota` — inline text for a CLI/user edge;
-- `NotaFile` — an existing path read as NOTA text by the component;
-- `SignalFile` — an existing non-`.nota` path read as a signal-encoded binary
+- `InlineDotos` — inline text for a CLI/user edge;
+- `DotosFile` — an existing path read as DOTOS text by the component;
+- `SignalFile` — an existing non-`.dotos` path read as a signal-encoded binary
   by a daemon or batch edge.
 
-The runtime deliberately does not parse NOTA. It removes duplicated argument
+The runtime deliberately does not parse DOTOS. It removes duplicated argument
 counting and path/text classification while leaving schema-specific parsing
 to each component crate. Daemon entrypoints call `signal_file_argument()`:
-inline text and `.nota` paths are rejected before the component tries to load
+inline text and `.dotos` paths are rejected before the component tries to load
 its typed binary startup record.
 
 ## Runner Runtime
@@ -212,7 +212,7 @@ runner calls:
 - `stop` when the accept loop exits.
 
 The runtime crate deliberately does not know about generated Signal roots,
-rkyv archives, NOTA, SEMA tables, trace configuration, or policy meaning. A
+rkyv archives, DOTOS, SEMA tables, trace configuration, or policy meaning. A
 component's `handle_stream` method remains the place where generated
 signal-frame transport meets the component engine.
 
@@ -363,14 +363,14 @@ event count arrives before a timeout.
 when no trace socket is configured, or it binds a `TraceSocketListener` and
 collects typed `Event` values from the daemon. It only renders events through
 `Display` at `print_events`, so trace data stays typed until the client/user
-boundary. The component supplies that `Display` implementation; a NOTA-enabled
-client can render the generated NOTA event without `triad-runtime` depending on
-NOTA.
+boundary. The component supplies that `Display` implementation; a DOTOS-enabled
+client can render the generated DOTOS event without `triad-runtime` depending on
+DOTOS.
 
 ## Boundaries
 
 `triad-runtime` owns reusable runtime infrastructure. It does not emit schema,
-define component signal roots, parse NOTA, own component storage tables, or
+define component signal roots, parse DOTOS, own component storage tables, or
 decide component behavior.
 
 Future extraction waves may add generic daemon command scaffolding, signal

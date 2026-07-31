@@ -50,9 +50,9 @@
           test = craneLib.cargoTest (commonArguments // {
             inherit cargoArtifacts;
           });
-          test-nota-text = craneLib.cargoTest (commonArguments // {
+          test-dotos-text = craneLib.cargoTest (commonArguments // {
             inherit cargoArtifacts;
-            cargoTestExtraArgs = "--all-targets --features nota-text";
+            cargoTestExtraArgs = "--all-targets --features dotos-text";
           });
           fmt = craneLib.cargoFmt {
             src = source;

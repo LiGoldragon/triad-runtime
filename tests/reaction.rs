@@ -4,7 +4,7 @@
 //!
 //! 1. multi-parameter generic enum + the full wire-derive stack compiles;
 //! 2. rkyv Archive→Serialize→Deserialize round-trips a `Work<P1,P2,P3,P4>`;
-//! 3. NOTA `to_nota`→`from_nota` round-trips the same value;
+//! 3. DOTOS `to_dotos`→`from_dotos` round-trips the same value;
 //! 4. the omittable-leg mechanism: the literal `enum Never {}` binding is
 //!    DISPROVEN (it cannot carry the wire-derive stack), and the viable
 //!    fixed-arity fallback (a derivable stand-in leg) round-trips both ways;
@@ -15,16 +15,16 @@
 //! wire enums use (`spirit/src/schema/nexus.rs`), so the proof is
 //! representative of production payloads.
 
-#![cfg(feature = "nota-text")]
+#![cfg(feature = "dotos-text")]
 
-use nota::{NotaEncode, NotaSource};
+use dotos::{DotosEncode, DotosSource};
 use triad_runtime::{Action, Never, NextStep, Work};
 
 // --- Concrete payloads, each deriving the full wire stack -------------------
 
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -38,8 +38,8 @@ struct ArrivedSignal {
 }
 
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -53,8 +53,8 @@ struct WriteOutcome {
 }
 
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -68,8 +68,8 @@ struct ReadOutcome {
 }
 
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -83,8 +83,8 @@ struct EffectOutcome {
 }
 
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -110,14 +110,14 @@ type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, 
 // "unit" leg `LegAbsent` — a real, derivable, single-state payload that proves
 // a three-leg component still round-trips its constructible variants. (In
 // production this is the fixed-arity fallback the gate selects.)
-// The fixed-arity stand-in must carry at least one field: the nota derive
-// emits `NotaEncode`/`NotaDecode` for single-field records (like every payload
+// The fixed-arity stand-in must carry at least one field: the dotos derive
+// emits `DotosEncode`/`DotosDecode` for single-field records (like every payload
 // here) but NOT for a zero-field unit struct, so a bare `struct LegAbsent;`
-// fails the NOTA half of the stack just as `Never` fails the rkyv half. The
+// fails the DOTOS half of the stack just as `Never` fails the rkyv half. The
 // honest fallback payload therefore carries an explicit marker field.
 #[derive(
-    nota::NotaDecode,
-    nota::NotaEncode,
+    dotos::DotosDecode,
+    dotos::DotosEncode,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -135,7 +135,7 @@ type ReadlessWork = Work<ArrivedSignal, WriteOutcome, LegAbsent, EffectOutcome>;
 // --- Proof 1: the multi-parameter generic compiles with the full stack ------
 //
 // Reaching this file at all means `Work<…>` and `Action<…>` compiled with
-// rkyv::{Archive,Serialize,Deserialize} + nota::{NotaDecode,NotaEncode}
+// rkyv::{Archive,Serialize,Deserialize} + dotos::{DotosDecode,DotosEncode}
 // over four and five free type parameters respectively. This compile-only
 // instantiation pins it as an asserted fact.
 
@@ -179,28 +179,28 @@ fn rkyv_round_trips_multi_parameter_action() {
     assert_eq!(action, restored);
 }
 
-// --- Proof 3: NOTA round-trip over the multi-parameter generic --------------
+// --- Proof 3: DOTOS round-trip over the multi-parameter generic --------------
 
 #[test]
-fn nota_round_trips_multi_parameter_work() {
+fn dotos_round_trips_multi_parameter_work() {
     let work: FullWork = Work::SignalArrived(ArrivedSignal { sequence: 11 });
 
-    let rendered = work.to_nota();
-    let restored: FullWork = NotaSource::new(&rendered)
+    let rendered = work.to_dotos();
+    let restored: FullWork = DotosSource::new(&rendered)
         .parse::<FullWork>()
-        .expect("parse work back from nota");
+        .expect("parse work back from dotos");
 
     assert_eq!(work, restored);
 }
 
 #[test]
-fn nota_round_trips_multi_parameter_action() {
+fn dotos_round_trips_multi_parameter_action() {
     let action: FullAction = Action::CommandSemaWrite(WriteOutcome { committed: true });
 
-    let rendered = action.to_nota();
-    let restored: FullAction = NotaSource::new(&rendered)
+    let rendered = action.to_dotos();
+    let restored: FullAction = DotosSource::new(&rendered)
         .parse::<FullAction>()
-        .expect("parse action back from nota");
+        .expect("parse action back from dotos");
 
     assert_eq!(action, restored);
 }
@@ -219,7 +219,7 @@ fn nota_round_trips_multi_parameter_action() {
 // (b) The viable fallback — a fixed smaller arity, binding the absent leg to a
 //     derivable stand-in (`LegAbsent`) — DOES round-trip. A three-leg
 //     component is realized as `Work<Event, Write, LegAbsent, Effect>` and its
-//     constructible variants serialize/deserialize and NOTA round-trip.
+//     constructible variants serialize/deserialize and DOTOS round-trip.
 
 #[test]
 fn fixed_arity_fallback_work_round_trips_rkyv() {
@@ -233,13 +233,13 @@ fn fixed_arity_fallback_work_round_trips_rkyv() {
 }
 
 #[test]
-fn fixed_arity_fallback_work_round_trips_nota() {
+fn fixed_arity_fallback_work_round_trips_dotos() {
     let work: ReadlessWork = Work::EffectCompleted(EffectOutcome { exit_code: 1 });
 
-    let rendered = work.to_nota();
-    let restored: ReadlessWork = NotaSource::new(&rendered)
+    let rendered = work.to_dotos();
+    let restored: ReadlessWork = DotosSource::new(&rendered)
         .parse::<ReadlessWork>()
-        .expect("parse readless work back from nota");
+        .expect("parse readless work back from dotos");
 
     assert_eq!(work, restored);
 }
