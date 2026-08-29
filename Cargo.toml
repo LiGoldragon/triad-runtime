@@ -15,11 +15,11 @@ default = []
 nota-text = ["dep:nota"]
 
 [dependencies]
-kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main", default-features = false, features = ["macros", "tracing"] }
+kameo = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01", default-features = false, features = ["macros", "tracing"] }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 rustix = { version = "1", default-features = false, features = ["std", "net"] }
-signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", branch = "main" }
-nota = { git = "https://github.com/LiGoldragon/nota.git", branch = "main", optional = true }
+signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "f46872e7e8edae5264c892443d415a273b231234" }
+nota = { git = "https://github.com/LiGoldragon/nota.git", rev = "bea7e2840ac2cf3e384f07b5c10eeb0890cead25", optional = true }
 thiserror = "2"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 
@@ -32,4 +32,4 @@ unused      = { level = "warn", priority = -1 }
 dead_code   = "warn"
 
 [patch.crates-io]
-kameo = { git = "https://github.com/LiGoldragon/kameo.git", branch = "main" }
+kameo = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01" }
