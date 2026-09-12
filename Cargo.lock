@@ -57,8 +57,8 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "datom-codec"
-version = "0.26.3"
-source = "git+https://github.com/LiGoldragon/datom-codec.git?rev=627db67f2655efd9f786864009955005fd8ab2ad#627db67f2655efd9f786864009955005fd8ab2ad"
+version = "0.27.0"
+source = "git+https://github.com/LiGoldragon/datom-codec.git?rev=6dccc76b75918a91d3370a9d4fe88aa7dd567876#6dccc76b75918a91d3370a9d4fe88aa7dd567876"
 dependencies = [
  "datom-codec-derive",
  "protos",
@@ -66,8 +66,8 @@ dependencies = [
 
 [[package]]
 name = "datom-codec-derive"
-version = "0.26.0"
-source = "git+https://github.com/LiGoldragon/datom-codec.git?rev=627db67f2655efd9f786864009955005fd8ab2ad#627db67f2655efd9f786864009955005fd8ab2ad"
+version = "0.27.0"
+source = "git+https://github.com/LiGoldragon/datom-codec.git?rev=6dccc76b75918a91d3370a9d4fe88aa7dd567876#6dccc76b75918a91d3370a9d4fe88aa7dd567876"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "datom-codec",
  "kameo",

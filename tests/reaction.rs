@@ -35,7 +35,7 @@ fn budget() -> Budget {
 
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -50,7 +50,7 @@ struct ArrivedSignal {
 
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -65,7 +65,7 @@ struct WriteOutcome {
 
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -80,7 +80,7 @@ struct ReadOutcome {
 
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -95,7 +95,7 @@ struct EffectOutcome {
 
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -126,7 +126,7 @@ type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, 
 // rather than an uninhabitable one.
 #[derive(
     datom_codec::Datomizable,
-    datom_codec::Compositional,
+    datom_codec::Composing,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -144,7 +144,7 @@ type ReadlessWork = Work<ArrivedSignal, WriteOutcome, LegAbsent, EffectOutcome>;
 // --- Proof 1: the multi-parameter generic compiles with the full stack ------
 //
 // Reaching this file at all means `Work<…>` and `Action<…>` compiled with
-// rkyv::{Archive,Serialize,Deserialize} + datom_codec::{Datomizable,Compositional}
+// rkyv::{Archive,Serialize,Deserialize} + datom_codec::{Datomizable,Composing}
 // over four and five free type parameters respectively. This compile-only
 // instantiation pins it as an asserted fact.
 

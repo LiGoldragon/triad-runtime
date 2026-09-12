@@ -16,7 +16,7 @@
 //! enums in `spirit/src/schema/nexus.rs` — the types this frame replaces:
 //!
 //! ```ignore
-//! #[cfg_attr(feature = "datom", derive(datom_codec::Datomizable, datom_codec::Compositional))]
+//! #[cfg_attr(feature = "datom", derive(datom_codec::Datomizable, datom_codec::Composing))]
 //! #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 //! ```
 //!
@@ -35,7 +35,7 @@ use crate::NextStep;
 /// `Never` does not compile under the wire-derive stack — see `Never`.
 #[cfg_attr(
     feature = "datom",
-    derive(datom_codec::Datomizable, datom_codec::Compositional)
+    derive(datom_codec::Datomizable, datom_codec::Composing)
 )]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Work<Event, Write, Read, Effect> {
@@ -51,7 +51,7 @@ pub enum Work<Event, Write, Read, Effect> {
 /// parameter so the frame stays acyclic at the type level.
 #[cfg_attr(
     feature = "datom",
-    derive(datom_codec::Datomizable, datom_codec::Compositional)
+    derive(datom_codec::Datomizable, datom_codec::Composing)
 )]
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Action<Reply, Write, Read, Effect, Continuation> {
