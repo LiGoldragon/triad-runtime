@@ -9,8 +9,8 @@ pub struct ComponentCommand {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ComponentArgument {
-    InlineDotos(InlineDotos),
-    DotosFile(DotosFile),
+    InlineDatom(InlineDatom),
+    DatomFile(DatomFile),
     SignalFile(SignalFile),
 }
 
@@ -21,7 +21,7 @@ enum RawArgument {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct InlineDotos {
+pub struct InlineDatom {
     text: String,
 }
 
@@ -31,7 +31,7 @@ struct InlineText {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct DotosFile {
+pub struct DatomFile {
     path: PathBuf,
 }
 
@@ -69,16 +69,16 @@ impl ComponentCommand {
         }
     }
 
-    /// The `--pretty` flag every DOTOS-printing CLI honors: a request to reflow
+    /// The `--pretty` flag every Datom-printing CLI honors: a request to reflow
     /// the reply for reading. Parsing it here keeps the flag out of each CLI's
-    /// operand handling and adds no DOTOS dependency to the shared harness, so a
-    /// daemon build that never enables `dotos-text` still carries no DOTOS code.
+    /// operand handling and adds no Datom dependency to the shared harness, so a
+    /// daemon build that never enables `datom` still carries no Datom code.
     const PRETTY_FLAG: &'static str = "--pretty";
 
-    /// Whether the caller asked for readable DOTOS output with `--pretty`.
+    /// Whether the caller asked for readable Datom output with `--pretty`.
     ///
-    /// A CLI passes this to `dotos::DotosOutputForm::from_pretty_requested` at its
-    /// print site; the daemon paths ignore it.
+    /// A CLI consults this at its own print site when rendering its reply; the
+    /// daemon paths ignore it.
     pub fn pretty_requested(&self) -> bool {
         self.arguments
             .iter()
@@ -90,19 +90,19 @@ impl ComponentCommand {
     }
 
     /// The positional arguments, with any recognized flag such as `--pretty`
-    /// removed, so the single-argument rule counts only real DOTOS operands.
+    /// removed, so the single-argument rule counts only real Datom operands.
     fn operands(&self) -> impl Iterator<Item = &String> {
         self.arguments
             .iter()
             .filter(|argument| *argument != Self::PRETTY_FLAG)
     }
 
-    pub fn dotos_argument(&self) -> Result<ComponentArgument, ArgumentError> {
+    pub fn datom_argument(&self) -> Result<ComponentArgument, ArgumentError> {
         match self.raw_argument()? {
-            RawArgument::InlineText(text) => Ok(ComponentArgument::InlineDotos(InlineDotos::new(
+            RawArgument::InlineText(text) => Ok(ComponentArgument::InlineDatom(InlineDatom::new(
                 text.into_text(),
             ))),
-            RawArgument::FilePath(path) => Ok(ComponentArgument::DotosFile(DotosFile::new(
+            RawArgument::FilePath(path) => Ok(ComponentArgument::DatomFile(DatomFile::new(
                 path.into_path(),
             ))),
         }
@@ -112,7 +112,7 @@ impl ComponentCommand {
         match self.raw_argument()? {
             RawArgument::InlineText(_) => Err(ArgumentError::ExpectedSignalFile),
             RawArgument::FilePath(path) => {
-                if path.is_dotos_file() {
+                if path.is_datom_file() {
                     return Err(ArgumentError::ExpectedSignalFile);
                 }
                 Ok(ComponentArgument::SignalFile(SignalFile::new(
@@ -134,24 +134,24 @@ impl ComponentCommand {
 }
 
 impl ComponentArgument {
-    pub fn into_inline_dotos(self) -> Option<InlineDotos> {
+    pub fn into_inline_datom(self) -> Option<InlineDatom> {
         match self {
-            Self::InlineDotos(argument) => Some(argument),
-            Self::DotosFile(_) | Self::SignalFile(_) => None,
+            Self::InlineDatom(argument) => Some(argument),
+            Self::DatomFile(_) | Self::SignalFile(_) => None,
         }
     }
 
-    pub fn into_dotos_file(self) -> Option<DotosFile> {
+    pub fn into_datom_file(self) -> Option<DatomFile> {
         match self {
-            Self::DotosFile(argument) => Some(argument),
-            Self::InlineDotos(_) | Self::SignalFile(_) => None,
+            Self::DatomFile(argument) => Some(argument),
+            Self::InlineDatom(_) | Self::SignalFile(_) => None,
         }
     }
 
     pub fn into_signal_file(self) -> Option<SignalFile> {
         match self {
             Self::SignalFile(argument) => Some(argument),
-            Self::InlineDotos(_) | Self::DotosFile(_) => None,
+            Self::InlineDatom(_) | Self::DatomFile(_) => None,
         }
     }
 }
@@ -166,7 +166,7 @@ impl RawArgument {
     }
 }
 
-impl InlineDotos {
+impl InlineDatom {
     fn new(text: impl Into<String>) -> Self {
         Self { text: text.into() }
     }
@@ -190,7 +190,7 @@ impl InlineText {
     }
 }
 
-impl DotosFile {
+impl DatomFile {
     fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }
@@ -223,11 +223,11 @@ impl ArgumentFilePath {
         Self { path: path.into() }
     }
 
-    fn is_dotos_file(&self) -> bool {
+    fn is_datom_file(&self) -> bool {
         self.path
             .extension()
             .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension == "dotos")
+            .is_some_and(|extension| extension == "datom")
     }
 
     fn into_path(self) -> PathBuf {

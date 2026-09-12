@@ -1,6 +1,6 @@
 [package]
 name         = "triad-runtime"
-version      = "0.8.1"
+version      = "0.9.0"
 edition      = "2024"
 rust-version = "1.88.0"
 license      = "MIT OR Apache-2.0"
@@ -10,22 +10,21 @@ publish      = false
 
 [features]
 default = []
-# Mirrors the schema-emitted wire-enum gate: DOTOS codec derives compile only
-# with the text feature on, exactly as the generated NexusWork/NexusAction do.
-dotos-text = ["dep:dotos", "signal-frame/dotos-text"]
+# Mirrors the schema-emitted wire-enum gate: the datom kinds are derived only
+# with this feature on, exactly as the generated NexusWork/NexusAction do.
+datom = ["dep:datom-codec", "dep:protos"]
 
 [dependencies]
 kameo = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01", default-features = false, features = ["macros", "tracing"] }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 rustix = { version = "1", default-features = false, features = ["std", "net"] }
-signal-frame = { git = "https://github.com/LiGoldragon/signal-frame.git", rev = "8aa0bcaeb29fe9e461a11706a469638d2fd109ac", default-features = false }
-dotos = { git = "https://github.com/LiGoldragon/dotos.git", rev = "80c7b17f7ad3cf547d2624c6a243e5de5f85c9f3", optional = true }
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec.git", rev = "627db67f2655efd9f786864009955005fd8ab2ad", optional = true }
+protos = { git = "https://github.com/LiGoldragon/protos.git", rev = "171b21f65337983ab624b7b906397a4f1f92c5a3", optional = true }
 thiserror = "2"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 
 [dev-dependencies]
 tempfile = "3"
-trybuild = "1"
 
 [lints.rust]
 unsafe_code = "forbid"

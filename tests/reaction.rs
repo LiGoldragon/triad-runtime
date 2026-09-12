@@ -4,7 +4,7 @@
 //!
 //! 1. multi-parameter generic enum + the full wire-derive stack compiles;
 //! 2. rkyv Archive→Serialize→Deserialize round-trips a `Work<P1,P2,P3,P4>`;
-//! 3. DOTOS `to_dotos`→`from_dotos` round-trips the same value;
+//! 3. datom `datomize`→`textualize`→`actualize` round-trips the same value;
 //! 4. the omittable-leg mechanism: the literal `enum Never {}` binding is
 //!    DISPROVEN (it cannot carry the wire-derive stack), and the viable
 //!    fixed-arity fallback (a derivable stand-in leg) round-trips both ways;
@@ -15,16 +15,27 @@
 //! wire enums use (`spirit/src/schema/nexus.rs`), so the proof is
 //! representative of production payloads.
 
-#![cfg(feature = "dotos-text")]
+#![cfg(feature = "datom")]
 
-use dotos::{DotosEncode, DotosSource};
+use datom_codec::{Actualizing, Budget, Datomizable, Path, Potential};
+use protos::{Protosizable, ReaderBudget, Textualizable};
 use triad_runtime::{Action, Never, NextStep, Work};
+
+/// A composition budget generous enough for every payload in this suite.
+fn budget() -> Budget {
+    Budget {
+        remaining: 4_096,
+        reader: ReaderBudget { remaining: 4_096 },
+        depth: 0,
+        maximum_depth: 4_096,
+    }
+}
 
 // --- Concrete payloads, each deriving the full wire stack -------------------
 
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -34,12 +45,12 @@ use triad_runtime::{Action, Never, NextStep, Work};
     Eq,
 )]
 struct ArrivedSignal {
-    sequence: u64,
+    sequence: i64,
 }
 
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -53,8 +64,8 @@ struct WriteOutcome {
 }
 
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -64,12 +75,12 @@ struct WriteOutcome {
     Eq,
 )]
 struct ReadOutcome {
-    record_count: u64,
+    record_count: i64,
 }
 
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -79,12 +90,12 @@ struct ReadOutcome {
     Eq,
 )]
 struct EffectOutcome {
-    exit_code: u64,
+    exit_code: i64,
 }
 
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -110,14 +121,12 @@ type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, 
 // "unit" leg `LegAbsent` — a real, derivable, single-state payload that proves
 // a three-leg component still round-trips its constructible variants. (In
 // production this is the fixed-arity fallback the gate selects.)
-// The fixed-arity stand-in must carry at least one field: the dotos derive
-// emits `DotosEncode`/`DotosDecode` for single-field records (like every payload
-// here) but NOT for a zero-field unit struct, so a bare `struct LegAbsent;`
-// fails the DOTOS half of the stack just as `Never` fails the rkyv half. The
-// honest fallback payload therefore carries an explicit marker field.
+// The fixed-arity stand-in carries an explicit marker field, matching every
+// other payload in this suite, so the absent leg is a real single-state value
+// rather than an uninhabitable one.
 #[derive(
-    dotos::DotosDecode,
-    dotos::DotosEncode,
+    datom_codec::Datomizable,
+    datom_codec::Compositional,
     rkyv::Archive,
     rkyv::Serialize,
     rkyv::Deserialize,
@@ -135,7 +144,7 @@ type ReadlessWork = Work<ArrivedSignal, WriteOutcome, LegAbsent, EffectOutcome>;
 // --- Proof 1: the multi-parameter generic compiles with the full stack ------
 //
 // Reaching this file at all means `Work<…>` and `Action<…>` compiled with
-// rkyv::{Archive,Serialize,Deserialize} + dotos::{DotosDecode,DotosEncode}
+// rkyv::{Archive,Serialize,Deserialize} + datom_codec::{Datomizable,Compositional}
 // over four and five free type parameters respectively. This compile-only
 // instantiation pins it as an asserted fact.
 
@@ -179,28 +188,28 @@ fn rkyv_round_trips_multi_parameter_action() {
     assert_eq!(action, restored);
 }
 
-// --- Proof 3: DOTOS round-trip over the multi-parameter generic --------------
+// --- Proof 3: datom round-trip over the multi-parameter generic -------------
 
 #[test]
-fn dotos_round_trips_multi_parameter_work() {
+fn datom_round_trips_multi_parameter_work() {
     let work: FullWork = Work::SignalArrived(ArrivedSignal { sequence: 11 });
 
-    let rendered = work.to_dotos();
-    let restored: FullWork = DotosSource::new(&rendered)
-        .parse::<FullWork>()
-        .expect("parse work back from dotos");
+    let rendered = work.datomize(Path::new()).protosize().textualize();
+    let restored: FullWork = Potential::from(rendered.as_str())
+        .actualize(&mut budget())
+        .expect("compose work back from datom text");
 
     assert_eq!(work, restored);
 }
 
 #[test]
-fn dotos_round_trips_multi_parameter_action() {
+fn datom_round_trips_multi_parameter_action() {
     let action: FullAction = Action::CommandSemaWrite(WriteOutcome { committed: true });
 
-    let rendered = action.to_dotos();
-    let restored: FullAction = DotosSource::new(&rendered)
-        .parse::<FullAction>()
-        .expect("parse action back from dotos");
+    let rendered = action.datomize(Path::new()).protosize().textualize();
+    let restored: FullAction = Potential::from(rendered.as_str())
+        .actualize(&mut budget())
+        .expect("compose action back from datom text");
 
     assert_eq!(action, restored);
 }
@@ -219,7 +228,7 @@ fn dotos_round_trips_multi_parameter_action() {
 // (b) The viable fallback — a fixed smaller arity, binding the absent leg to a
 //     derivable stand-in (`LegAbsent`) — DOES round-trip. A three-leg
 //     component is realized as `Work<Event, Write, LegAbsent, Effect>` and its
-//     constructible variants serialize/deserialize and DOTOS round-trip.
+//     constructible variants serialize/deserialize and datom round-trip.
 
 #[test]
 fn fixed_arity_fallback_work_round_trips_rkyv() {
@@ -233,13 +242,13 @@ fn fixed_arity_fallback_work_round_trips_rkyv() {
 }
 
 #[test]
-fn fixed_arity_fallback_work_round_trips_dotos() {
+fn fixed_arity_fallback_work_round_trips_datom() {
     let work: ReadlessWork = Work::EffectCompleted(EffectOutcome { exit_code: 1 });
 
-    let rendered = work.to_dotos();
-    let restored: ReadlessWork = DotosSource::new(&rendered)
-        .parse::<ReadlessWork>()
-        .expect("parse readless work back from dotos");
+    let rendered = work.datomize(Path::new()).protosize().textualize();
+    let restored: ReadlessWork = Potential::from(rendered.as_str())
+        .actualize(&mut budget())
+        .expect("compose readless work back from datom text");
 
     assert_eq!(work, restored);
 }

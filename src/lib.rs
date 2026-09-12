@@ -15,7 +15,6 @@ pub mod process;
 pub mod reaction;
 pub mod role;
 pub mod runner;
-pub mod streaming;
 pub mod tcp;
 pub mod trace;
 pub mod workers;
@@ -23,7 +22,7 @@ pub mod workers;
 pub use kameo;
 
 pub use argument::{
-    ArgumentError, ComponentArgument, ComponentCommand, DotosFile, InlineDotos, SignalFile,
+    ArgumentError, ComponentArgument, ComponentCommand, DatomFile, InlineDatom, SignalFile,
 };
 pub use async_runtime::{
     AcceptedConnection, AcquireRequestPermit, AsyncConnectionRuntime, AsyncListenerError,
@@ -53,12 +52,6 @@ pub use role::{
 };
 pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,
-};
-pub use streaming::{
-    Subscription, SubscriptionEventEpoch, SubscriptionEventEpochAuthority,
-    SubscriptionEventEpochError, SubscriptionEventEpochReservation, SubscriptionEventEpochStore,
-    SubscriptionEventPublisher, SubscriptionPublishError, SubscriptionRegistry, SubscriptionToken,
-    SubscriptionTokenError, SubscriptionTokenIssuer,
 };
 pub use tcp::{BoundTcpListenerDaemon, TcpListenerDaemon};
 pub use trace::{

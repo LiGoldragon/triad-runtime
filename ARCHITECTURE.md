@@ -22,14 +22,14 @@ The per-component runner GLUE (`NexusEngine::execute`, which constructs a `Runne
 
 Cross-host transport is a tailnet-bound TCP listener in this crate, reusing the length-prefixed frame codec, with peer identity as a typed closed sum distinguishing kernel-vouched Unix-socket peers from tailnet TCP peers. Ssh-forwarded sockets are rejected as the transport shape. Per Spirit `rj9y` (Decision, High).
 
-Component binaries share the single-argument rule through `ComponentCommand`. Daemons use `signal_file_argument()` and accept only a signal-encoded/rkyv file path; inline DOTOS text and `.dotos` paths are rejected before component-specific decoding. Per Spirit record `pjvv`.
+Component binaries share the single-argument rule through `ComponentCommand`. Daemons use `signal_file_argument()` and accept only a signal-encoded/rkyv file path; inline datom text and `.datom` paths are rejected before component-specific decoding. Per Spirit record `pjvv`.
 
 ## Frame Runtime
 
 `LengthPrefixedCodec` owns the generic binary envelope used by runtime
 transports: a four-byte big-endian body length followed by exactly that many
 payload bytes. `FrameBody` is intentionally just bytes. The codec does not
-know about schema roots, trace events, signal frames, DOTOS, or rkyv archive
+know about schema roots, trace events, frames, datom, or rkyv archive
 layout; those belong to the caller.
 
 This replaces the old pattern where trace transport, signal transport, and
@@ -116,15 +116,15 @@ both instantiations when a component serves both transports.
 argv slice, verifies exactly one component argument, and classifies it as a
 `ComponentArgument`:
 
-- `InlineDotos` — inline text for a CLI/user edge;
-- `DotosFile` — an existing path read as DOTOS text by the component;
-- `SignalFile` — an existing non-`.dotos` path read as a signal-encoded binary
+- `InlineDatom` — inline text for a CLI/user edge;
+- `DatomFile` — an existing path read as datom text by the component;
+- `SignalFile` — an existing non-`.datom` path read as a signal-encoded binary
   by a daemon or batch edge.
 
-The runtime deliberately does not parse DOTOS. It removes duplicated argument
+The runtime deliberately does not parse datom. It removes duplicated argument
 counting and path/text classification while leaving schema-specific parsing
 to each component crate. Daemon entrypoints call `signal_file_argument()`:
-inline text and `.dotos` paths are rejected before the component tries to load
+inline text and `.datom` paths are rejected before the component tries to load
 its typed binary startup record.
 
 ## Runner Runtime
@@ -186,7 +186,7 @@ That module owns `DaemonCommand`, `ComponentDaemon`, the
 `GeneratedDaemonRuntime` decode -> execute -> encode spine, single/multi
 listener selection, `DaemonError`, and `DaemonEntry::run_to_exit_code`.
 `triad-runtime` does NOT emit that module; it supplies the reusable process,
-listener, runner, frame, streaming, and exit-report objects the emitted module
+listener, runner, frame, and exit-report objects the emitted module
 uses.
 
 `role.rs` names the reusable engine roles as traits. Generated component roots
@@ -212,9 +212,9 @@ runner calls:
 - `stop` when the accept loop exits.
 
 The runtime crate deliberately does not know about generated Signal roots,
-rkyv archives, DOTOS, SEMA tables, trace configuration, or policy meaning. A
+rkyv archives, datom, SEMA tables, trace configuration, or policy meaning. A
 component's `handle_stream` method remains the place where generated
-signal-frame transport meets the component engine.
+frame transport meets the component engine.
 
 `MultiListenerDaemon` is the legacy synchronous ordinary/meta shell. It binds a
 list of `ListenerSocket<Listener>` values, applies each socket's optional
@@ -229,75 +229,10 @@ to exit cleanly before `stop` is called. This keeps graceful shutdown in the
 shared daemon shell instead of forcing every supervised component to fork its
 own polling loop.
 
-This is the current production listener model, not the final streaming or
+This is the current production listener model, not the final
 parallel scheduler model. A future transport scheduler may sit between the
 listener set and the engine owner, but public contracts still do not declare
 deployment parallelism.
-
-## Streaming Runtime
-
-`streaming.rs` owns reusable subscription mechanics above the `signal-frame`
-wire kernel. `SubscriptionToken` is the bridge trait for generated
-component-local token newtypes. `SubscriptionTokenIssuer` mints monotonically
-increasing `signal_frame::SubscriptionTokenInner` values from the established
-first value `1` and wraps them in the generated token type. The issuer is a
-linear, non-cloneable authority: it exposes neither its next value nor a raw
-seed/restore constructor, and `u64::MAX` is returned once before stable
-`SubscriptionTokenError::TokenExhausted`. `SubscriptionRegistry<Token, Filter>`
-owns its issuer, stores live subscriptions, issues tokens, accepts
-already-minted tokens from a schema-declared open-subscription effect,
-unregisters tokens, and publishes matching events through caller-supplied
-filter and delivery closures. `register` and `mint` return typed results; a
-minted value that collides with an externally registered live token is consumed
-and reported as `TokenCollision`, never inserted or reused. Already-minted
-registration still replaces the stale registration for that same token.
-
-`SubscriptionRegistry` is also non-cloneable. A component with several tasks
-must give an actor sole ownership or share one synchronized
-`Arc<Mutex<SubscriptionRegistry<...>>>` handle. Copying registry values or
-issuer state is not a supported sharing model.
-
-`SubscriptionEventEpochAuthority<Store>` takes ownership of the stream
-identity's `SubscriptionEventEpochStore`. The store's
-`reserve_next_epoch(&mut self, reservation)` contract atomically and durably
-advances its reservation state before it commits the supplied one-use
-capability into a private, non-cloneable `SubscriptionEventEpoch`. Skipping a
-reserved epoch after a crash is safe; returning before the advance is durable
-can reuse identifiers and violates the store contract. The runtime deliberately
-provides no durable store, raw epoch constructor, scalar checkpoint,
-`next_epoch`, or `restore` API. The application or Spirit persistence owner
-supplies the one authoritative store for each stream identity and reconstructs
-an authority by reopening that same store, not by copying a scalar epoch.
-`SubscriptionEventPublisher<Contract, Input, Output, Event>` consumes that
-reservation, privately owns its acceptor-lane sequence, and produces
-`signal_frame::BoundStreamingFrame<Contract, Input, Output, Event>` values
-whose body is `StreamingFrameBody::SubscriptionEvent`. `Contract` implements
-`signal_frame::WireContract`, so the producer derives the nonzero contract and
-revision header and callers cannot inject an unbound or wrong-contract header.
-The publisher remains generic over the schema-generated request, reply, and
-event roots; it never knows component event variants. `publish` returns
-`Result<BoundStreamingFrame<...>, SubscriptionPublishError>`; maximum sequence
-and epoch values are issued once, then remain typed exhaustion errors without
-wrapping or mutation.
-
-The 0.8 migration removes the unbound publisher API. Consumers add their
-generated contract marker as the first publisher type parameter and pass the
-event `WireRoute` to `new`; raw `ShortHeader` construction and unbound
-`StreamingFrame` output have no compatibility path. Consumers now obtain the
-second `new` argument from an application-owned
-`SubscriptionEventEpochAuthority<Store>`, handle the generic
-`SubscriptionEventEpochError<Store::Error>` at reservation and
-`SubscriptionPublishError` from `publish`, and implement the durable atomic
-reservation contract at the persistence boundary. Consumers of the rejected
-scalar API must delete `next_epoch()`/`restore(...)` checkpointing and open the
-same persisted store when restarting. No publisher constructor accepts
-`SessionEpoch`; event identifier fields are read through `session_epoch()`,
-`lane()`, and `sequence()`.
-
-The runtime does not own stream policy. Schema declares which operations open
-streams and which event variants belong to streams; generated code exposes the
-typed frame aliases; component code supplies filter semantics and writes frames
-to the subscriber connection.
 
 ## Process Runtime
 
@@ -363,14 +298,14 @@ event count arrives before a timeout.
 when no trace socket is configured, or it binds a `TraceSocketListener` and
 collects typed `Event` values from the daemon. It only renders events through
 `Display` at `print_events`, so trace data stays typed until the client/user
-boundary. The component supplies that `Display` implementation; a DOTOS-enabled
-client can render the generated DOTOS event without `triad-runtime` depending on
-DOTOS.
+boundary. The component supplies that `Display` implementation; a datom-enabled
+client can render the generated datom event without `triad-runtime` depending on
+datom.
 
 ## Boundaries
 
 `triad-runtime` owns reusable runtime infrastructure. It does not emit schema,
-define component signal roots, parse DOTOS, own component storage tables, or
+define component signal roots, parse datom, own component storage tables, or
 decide component behavior.
 
 Future extraction waves may add generic daemon command scaffolding, signal
@@ -392,8 +327,6 @@ implementation scope.
   budget.
 - `src/role.rs` — reusable role traits implemented by generated component
   roots.
-- `src/streaming.rs` — reusable subscription token registry and typed
-  `signal-frame` subscription-event publisher.
 - `src/tcp.rs` — async task-backed TCP listener shell for cross-host
   transport.
 - `src/trace.rs` — generic trace log, frame, socket path, listener, client,
@@ -405,8 +338,6 @@ implementation scope.
 - `tests/process.rs` — binding surface, peer-identity, and exit-report
   witnesses.
 - `tests/runner.rs` — shared runner loop and budget witnesses.
-- `tests/streaming.rs` — token issuance, registry filtering, event sequence,
-  and `signal-frame` streaming-frame witnesses.
 - `tests/tcp.rs` — loopback TCP frame round-trip, remote-address peer
   identity, and listener-drop cleanup witnesses.
 - `tests/trace.rs` — rkyv frame and Unix socket witnesses using a local event
