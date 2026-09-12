@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "datom-codec",
  "kameo",
