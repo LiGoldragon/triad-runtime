@@ -1,4 +1,4 @@
-use crate::{NexusEffectCommand, NexusWork, SemaReadInput, SemaWriteInput};
+use crate::{MemoryReadInput, MemoryWriteInput, NexusEffectCommand, NexusWork};
 
 use std::future::Future;
 
@@ -23,18 +23,18 @@ pub struct ContinuationExhausted {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum NextStep<Reply, SemaWrite, SemaRead, Effect, Work> {
+pub enum NextStep<Reply, MemoryWrite, MemoryRead, Effect, Work> {
     Reply(Reply),
-    SemaWrite(SemaWrite),
-    SemaRead(SemaRead),
+    MemoryWrite(MemoryWrite),
+    MemoryRead(MemoryRead),
     RunEffect(Effect),
     Continue(Work),
 }
 
 pub trait RunnerEngines {
     type Reply;
-    type SemaWrite: SemaWriteInput;
-    type SemaRead: SemaReadInput;
+    type MemoryWrite: MemoryWriteInput;
+    type MemoryRead: MemoryReadInput;
     type Effect: NexusEffectCommand;
     type Work: NexusWork;
 
@@ -42,14 +42,14 @@ pub trait RunnerEngines {
     where
         Self: Sized;
 
-    fn apply_sema_write(
+    fn apply_memory_write(
         &mut self,
-        write: Self::SemaWrite,
+        write: Self::MemoryWrite,
     ) -> impl Future<Output = Self::Work> + Send + '_;
 
-    fn observe_sema_read(
+    fn observe_memory_read(
         &mut self,
-        read: Self::SemaRead,
+        read: Self::MemoryRead,
     ) -> impl Future<Output = Self::Work> + Send + '_;
 
     fn run_effect(&mut self, effect: Self::Effect) -> impl Future<Output = Self::Work> + Send + '_;
@@ -59,8 +59,8 @@ pub trait RunnerEngines {
 
 pub type RunnerNextStep<Engines> = NextStep<
     <Engines as RunnerEngines>::Reply,
-    <Engines as RunnerEngines>::SemaWrite,
-    <Engines as RunnerEngines>::SemaRead,
+    <Engines as RunnerEngines>::MemoryWrite,
+    <Engines as RunnerEngines>::MemoryRead,
     <Engines as RunnerEngines>::Effect,
     <Engines as RunnerEngines>::Work,
 >;
@@ -168,17 +168,17 @@ impl Runner {
         loop {
             match engines.decide_next_step(work) {
                 NextStep::Reply(reply) => return reply,
-                NextStep::SemaWrite(write) => {
+                NextStep::MemoryWrite(write) => {
                     if let Err(exhausted) = budget.spend_next_step() {
                         return engines.budget_exhausted_reply(exhausted);
                     }
-                    work = engines.apply_sema_write(write).await;
+                    work = engines.apply_memory_write(write).await;
                 }
-                NextStep::SemaRead(read) => {
+                NextStep::MemoryRead(read) => {
                     if let Err(exhausted) = budget.spend_next_step() {
                         return engines.budget_exhausted_reply(exhausted);
                     }
-                    work = engines.observe_sema_read(read).await;
+                    work = engines.observe_memory_read(read).await;
                 }
                 NextStep::RunEffect(effect) => {
                     if let Err(exhausted) = budget.spend_next_step() {

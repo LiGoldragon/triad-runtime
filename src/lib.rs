@@ -1,6 +1,6 @@
 //! Shared runtime support for schema-derived triad daemons.
 //!
-//! `triad-runtime` owns generic mechanics around generated Signal/Nexus/SEMA
+//! `triad-runtime` owns generic mechanics around generated Signal/Nexus/Memory
 //! interfaces. Component crates keep their schema-generated nouns and domain
 //! algorithms; this crate supplies reusable runtime infrastructure that is the
 //! same for every component.
@@ -47,8 +47,8 @@ pub use process::{
 };
 pub use reaction::{Action, Never, Work};
 pub use role::{
-    NexusAction, NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
-    SemaReadInput, SemaReadOutput, SemaWriteInput, SemaWriteOutput,
+    MemoryReadInput, MemoryReadOutput, MemoryWriteInput, MemoryWriteOutput, NexusAction,
+    NexusActionNextStep, NexusEffectCommand, NexusEffectResult, NexusWork,
 };
 pub use runner::{
     ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, Runner, RunnerEngines,

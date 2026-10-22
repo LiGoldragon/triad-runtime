@@ -112,8 +112,8 @@ struct SignalReply {
 type FullWork = Work<ArrivedSignal, WriteOutcome, ReadOutcome, EffectOutcome>;
 type FullAction = Action<SignalReply, WriteOutcome, ReadOutcome, EffectOutcome, FullWork>;
 
-// A three-leg component that has no SEMA-read leg. The O3 proposal was to bind
-// that parameter to an uninhabitable `Never` so `SemaReadCompleted(Never)` can
+// A three-leg component that has no Memory-read leg. The O3 proposal was to bind
+// that parameter to an uninhabitable `Never` so `MemoryReadCompleted(Never)` can
 // never be constructed while the enum still derives the full wire stack. That
 // is DISPROVEN — `Never` cannot carry the rkyv stack (see the `never_*` tests
 // and `reaction::Never`'s doc). The viable fallback is a fixed smaller arity:
@@ -155,8 +155,8 @@ fn multi_parameter_generic_compiles_with_full_wire_stack() {
     // Construct one of every Work variant to prove each leg is inhabited.
     let _writes: [FullWork; 4] = [
         Work::SignalArrived(ArrivedSignal { sequence: 1 }),
-        Work::SemaWriteCompleted(WriteOutcome { committed: true }),
-        Work::SemaReadCompleted(ReadOutcome { record_count: 3 }),
+        Work::MemoryWriteCompleted(WriteOutcome { committed: true }),
+        Work::MemoryReadCompleted(ReadOutcome { record_count: 3 }),
         Work::EffectCompleted(EffectOutcome { exit_code: 0 }),
     ];
     assert!(matches!(work, Work::SignalArrived(_)));
@@ -167,7 +167,7 @@ fn multi_parameter_generic_compiles_with_full_wire_stack() {
 
 #[test]
 fn rkyv_round_trips_multi_parameter_work() {
-    let work: FullWork = Work::SemaReadCompleted(ReadOutcome { record_count: 42 });
+    let work: FullWork = Work::MemoryReadCompleted(ReadOutcome { record_count: 42 });
 
     let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&work).expect("serialize work");
     let restored: FullWork =
@@ -204,7 +204,7 @@ fn datom_round_trips_multi_parameter_work() {
 
 #[test]
 fn datom_round_trips_multi_parameter_action() {
-    let action: FullAction = Action::CommandSemaWrite(WriteOutcome { committed: true });
+    let action: FullAction = Action::CommandMemoryWrite(WriteOutcome { committed: true });
 
     let rendered = action.datomize(Path::new()).protosize().textualize();
     let restored: FullAction = Potential::from(rendered.as_str())
@@ -279,11 +279,11 @@ fn action_projects_to_next_step_via_direct_from() {
     let reply: FullAction = Action::ReplyToSignal(SignalReply { accepted: true });
     assert!(matches!(Step::from(reply), NextStep::Reply(_)));
 
-    let write: FullAction = Action::CommandSemaWrite(WriteOutcome { committed: false });
-    assert!(matches!(Step::from(write), NextStep::SemaWrite(_)));
+    let write: FullAction = Action::CommandMemoryWrite(WriteOutcome { committed: false });
+    assert!(matches!(Step::from(write), NextStep::MemoryWrite(_)));
 
-    let read: FullAction = Action::CommandSemaRead(ReadOutcome { record_count: 2 });
-    assert!(matches!(Step::from(read), NextStep::SemaRead(_)));
+    let read: FullAction = Action::CommandMemoryRead(ReadOutcome { record_count: 2 });
+    assert!(matches!(Step::from(read), NextStep::MemoryRead(_)));
 
     let effect: FullAction = Action::CommandEffect(EffectOutcome { exit_code: 3 });
     assert!(matches!(Step::from(effect), NextStep::RunEffect(_)));

@@ -5,7 +5,7 @@ edition      = "2024"
 rust-version = "1.88.0"
 license      = "MIT OR Apache-2.0"
 repository   = "https://github.com/LiGoldragon/triad-runtime"
-description  = "Shared runtime support for schema-derived Signal/Nexus/SEMA triad daemons."
+description  = "Shared runtime support for schema-derived Signal/Nexus/Memory triad daemons."
 publish      = false
 
 [features]

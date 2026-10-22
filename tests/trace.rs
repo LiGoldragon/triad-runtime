@@ -103,7 +103,7 @@ fn record_result_reports_missing_socket_listener() {
 #[test]
 fn trace_frame_writes_length_prefixed_binary_archive() {
     let (mut writer, mut reader) = UnixStream::pair().expect("socket pair");
-    let event = ExampleTraceEvent::new("SemaWriteApplied");
+    let event = ExampleTraceEvent::new("MemoryWriteApplied");
 
     TraceFrame::new(event.clone())
         .write_to(&mut writer)
@@ -117,7 +117,7 @@ fn trace_frame_writes_length_prefixed_binary_archive() {
 
 #[test]
 fn trace_frame_is_length_prefixed_binary_not_display_text() {
-    let event = ExampleTraceEvent::new("SemaWriteApplied");
+    let event = ExampleTraceEvent::new("MemoryWriteApplied");
     let frame = TraceFrame::new(event.clone())
         .to_bytes()
         .expect("frame bytes");

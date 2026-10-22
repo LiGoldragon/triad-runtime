@@ -40,12 +40,12 @@ use crate::NextStep;
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Work<Event, Write, Read, Effect> {
     SignalArrived(Event),
-    SemaWriteCompleted(Write),
-    SemaReadCompleted(Read),
+    MemoryWriteCompleted(Write),
+    MemoryReadCompleted(Read),
     EffectCompleted(Effect),
 }
 
-/// The decision the reaction frame emits: reply, command a SEMA write/read,
+/// The decision the reaction frame emits: reply, command a Memory write/read,
 /// command a side effect, or continue with further work. The `Continuation`
 /// parameter is the component's own `Work` instantiation, kept as a free
 /// parameter so the frame stays acyclic at the type level.
@@ -56,8 +56,8 @@ pub enum Work<Event, Write, Read, Effect> {
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize, Clone, Debug, PartialEq, Eq)]
 pub enum Action<Reply, Write, Read, Effect, Continuation> {
     ReplyToSignal(Reply),
-    CommandSemaWrite(Write),
-    CommandSemaRead(Read),
+    CommandMemoryWrite(Write),
+    CommandMemoryRead(Read),
     CommandEffect(Effect),
     Continue(Continuation),
 }
@@ -104,7 +104,7 @@ pub enum Never {}
 
 /// The runner seam, proven without the associated-type `NexusAction` shim.
 ///
-/// `triad_runtime::NextStep<Reply, SemaWrite, SemaRead, Effect, Work>` and
+/// `triad_runtime::NextStep<Reply, MemoryWrite, MemoryRead, Effect, Work>` and
 /// `Action<Reply, Write, Read, Effect, Continuation>` are structurally the same
 /// five-way sum, so the projection is a direct, total `From` — no
 /// `RunnerEngines::*` associated types, no `into_next_step` trait method. The
@@ -116,8 +116,8 @@ impl<Reply, Write, Read, Effect, Continuation>
     fn from(action: Action<Reply, Write, Read, Effect, Continuation>) -> Self {
         match action {
             Action::ReplyToSignal(reply) => NextStep::Reply(reply),
-            Action::CommandSemaWrite(write) => NextStep::SemaWrite(write),
-            Action::CommandSemaRead(read) => NextStep::SemaRead(read),
+            Action::CommandMemoryWrite(write) => NextStep::MemoryWrite(write),
+            Action::CommandMemoryRead(read) => NextStep::MemoryRead(read),
             Action::CommandEffect(effect) => NextStep::RunEffect(effect),
             Action::Continue(work) => NextStep::Continue(work),
         }

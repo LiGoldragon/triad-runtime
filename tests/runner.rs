@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 
 use triad_runtime::{
-    ContinuationBudget, ContinuationExhausted, ContinuationLimit, NextStep, NexusEffectCommand,
-    NexusWork, Runner, RunnerEngines, SemaReadInput, SemaWriteInput,
+    ContinuationBudget, ContinuationExhausted, ContinuationLimit, MemoryReadInput,
+    MemoryWriteInput, NextStep, NexusEffectCommand, NexusWork, Runner, RunnerEngines,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,12 +27,12 @@ enum TestReply {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct TestSemaWrite {
+struct TestMemoryWrite {
     label: &'static str,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct TestSemaRead {
+struct TestMemoryRead {
     label: &'static str,
 }
 
@@ -47,13 +47,13 @@ struct TestEngines {
     actions: RefCell<Vec<&'static str>>,
 }
 
-impl TestSemaWrite {
+impl TestMemoryWrite {
     fn new(label: &'static str) -> Self {
         Self { label }
     }
 }
 
-impl TestSemaRead {
+impl TestMemoryRead {
     fn new(label: &'static str) -> Self {
         Self { label }
     }
@@ -77,9 +77,9 @@ impl TestEffect {
 
 impl NexusWork for TestWork {}
 
-impl SemaWriteInput for TestSemaWrite {}
+impl MemoryWriteInput for TestMemoryWrite {}
 
-impl SemaReadInput for TestSemaRead {}
+impl MemoryReadInput for TestMemoryRead {}
 
 impl NexusEffectCommand for TestEffect {}
 
@@ -99,19 +99,21 @@ impl TestEngines {
 
 impl RunnerEngines for TestEngines {
     type Reply = TestReply;
-    type SemaRead = TestSemaRead;
-    type SemaWrite = TestSemaWrite;
+    type MemoryRead = TestMemoryRead;
+    type MemoryWrite = TestMemoryWrite;
     type Effect = TestEffect;
     type Work = TestWork;
 
     fn decide_next_step(
         &mut self,
         work: Self::Work,
-    ) -> NextStep<Self::Reply, Self::SemaWrite, Self::SemaRead, Self::Effect, Self::Work> {
+    ) -> NextStep<Self::Reply, Self::MemoryWrite, Self::MemoryRead, Self::Effect, Self::Work> {
         match work {
             TestWork::ReplyNow => NextStep::Reply(TestReply::Done),
-            TestWork::Write => NextStep::SemaWrite(TestSemaWrite::new("write")),
-            TestWork::AfterWrite | TestWork::Read => NextStep::SemaRead(TestSemaRead::new("read")),
+            TestWork::Write => NextStep::MemoryWrite(TestMemoryWrite::new("write")),
+            TestWork::AfterWrite | TestWork::Read => {
+                NextStep::MemoryRead(TestMemoryRead::new("read"))
+            }
             TestWork::AfterRead | TestWork::Effect => {
                 NextStep::RunEffect(TestEffect::new("effect"))
             }
@@ -122,12 +124,12 @@ impl RunnerEngines for TestEngines {
         }
     }
 
-    async fn apply_sema_write(&mut self, write: Self::SemaWrite) -> Self::Work {
+    async fn apply_memory_write(&mut self, write: Self::MemoryWrite) -> Self::Work {
         self.push_action(write.label);
         TestWork::AfterWrite
     }
 
-    async fn observe_sema_read(&mut self, read: Self::SemaRead) -> Self::Work {
+    async fn observe_memory_read(&mut self, read: Self::MemoryRead) -> Self::Work {
         self.push_shared_action(read.label);
         TestWork::AfterRead
     }

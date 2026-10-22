@@ -3,7 +3,7 @@
 ## Purpose
 
 `triad-runtime` is the shared runtime library for schema-derived component
-daemons. It owns generic mechanics around Signal/Nexus/SEMA interfaces while
+daemons. It owns generic mechanics around Signal/Nexus/Memory interfaces while
 each component crate owns its generated schema nouns and domain algorithms.
 
 The readability rule is the boundary rule: schema names the interface;
@@ -130,14 +130,14 @@ its typed binary startup record.
 ## Runner Runtime
 
 `Runner` owns the shared recursive Nexus loop. Component code does not
-hand-write the cycle from a Nexus action into SEMA writes, SEMA reads, effects,
+hand-write the cycle from a Nexus action into Memory writes, Memory reads, effects,
 or another Nexus work item. Instead, generated glue projects the component's
 typed action enum into `NextStep`, and async `Runner::drive` dispatches the fixed
 five-outcome shape:
 
 - `Reply` exits to Signal;
-- `SemaWrite` applies storage and re-enters with write completion;
-- `SemaRead` observes storage and re-enters with read completion;
+- `MemoryWrite` applies storage and re-enters with write completion;
+- `MemoryRead` observes storage and re-enters with read completion;
 - `RunEffect` performs a component effect and re-enters with effect
   completion;
 - `Continue` re-enters Nexus directly.
@@ -146,8 +146,8 @@ five-outcome shape:
 the library loop. It is deliberately typed over each component's generated
 payloads; the runtime does not erase plane identity or invent component
 meaning. The adapter is generated glue, not an author-written fourth engine.
-Component authors still implement the real Signal, Nexus, and SEMA behavior
-plus the async effect handler and budget-exhausted reply. SEMA writes, SEMA
+Component authors still implement the real Signal, Nexus, and Memory behavior
+plus the async effect handler and budget-exhausted reply. Memory writes, Memory
 reads, and effects are awaited runner steps so database work, actor messages,
 and child processes are not disguised as synchronous callbacks.
 
@@ -190,8 +190,8 @@ listener, runner, frame, and exit-report objects the emitted module
 uses.
 
 `role.rs` names the reusable engine roles as traits. Generated component roots
-such as `NexusWork`, `CommandSemaWrite`, `CommandSemaRead`, and
-`CommandEffect` implement `NexusWork`, `SemaWriteInput`, `SemaReadInput`, and
+such as `NexusWork`, `CommandMemoryWrite`, `CommandMemoryRead`, and
+`CommandEffect` implement `NexusWork`, `MemoryWriteInput`, `MemoryReadInput`, and
 `NexusEffectCommand` respectively. The concrete enum variants remain
 component-specific; the reusable name is the trait/interface the runtime sees.
 
@@ -212,7 +212,7 @@ runner calls:
 - `stop` when the accept loop exits.
 
 The runtime crate deliberately does not know about generated Signal roots,
-rkyv archives, datom, SEMA tables, trace configuration, or policy meaning. A
+rkyv archives, datom, Memory tables, trace configuration, or policy meaning. A
 component's `handle_stream` method remains the place where generated
 frame transport meets the component engine.
 

@@ -2,13 +2,13 @@ use crate::NextStep;
 
 pub trait NexusWork {}
 
-pub trait SemaWriteInput {}
+pub trait MemoryWriteInput {}
 
-pub trait SemaWriteOutput {}
+pub trait MemoryWriteOutput {}
 
-pub trait SemaReadInput {}
+pub trait MemoryReadInput {}
 
-pub trait SemaReadOutput {}
+pub trait MemoryReadOutput {}
 
 pub trait NexusEffectCommand {}
 
@@ -16,8 +16,8 @@ pub trait NexusEffectResult {}
 
 pub trait NexusAction: Sized {
     type Reply;
-    type SemaWrite: SemaWriteInput;
-    type SemaRead: SemaReadInput;
+    type MemoryWrite: MemoryWriteInput;
+    type MemoryRead: MemoryReadInput;
     type Effect: NexusEffectCommand;
     type Work: NexusWork;
 
@@ -26,19 +26,19 @@ pub trait NexusAction: Sized {
 
 pub type NexusActionNextStep<Action> = NextStep<
     <Action as NexusAction>::Reply,
-    <Action as NexusAction>::SemaWrite,
-    <Action as NexusAction>::SemaRead,
+    <Action as NexusAction>::MemoryWrite,
+    <Action as NexusAction>::MemoryRead,
     <Action as NexusAction>::Effect,
     <Action as NexusAction>::Work,
 >;
 
-impl SemaWriteInput for std::convert::Infallible {}
+impl MemoryWriteInput for std::convert::Infallible {}
 
-impl SemaWriteOutput for std::convert::Infallible {}
+impl MemoryWriteOutput for std::convert::Infallible {}
 
-impl SemaReadInput for std::convert::Infallible {}
+impl MemoryReadInput for std::convert::Infallible {}
 
-impl SemaReadOutput for std::convert::Infallible {}
+impl MemoryReadOutput for std::convert::Infallible {}
 
 impl NexusEffectCommand for std::convert::Infallible {}
 

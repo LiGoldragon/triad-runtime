@@ -25,7 +25,7 @@ impl TestConfiguration {
         Self {
             socket_path: PathBuf::from("/run/component/working.sock"),
             meta_socket_path: None,
-            database_path: PathBuf::from("/var/component/state.sema"),
+            database_path: PathBuf::from("/var/component/state.memory"),
             trace_socket_path: None,
         }
     }
@@ -34,7 +34,7 @@ impl TestConfiguration {
         Self {
             socket_path: PathBuf::from("/run/component/working.sock"),
             meta_socket_path: Some(PathBuf::from("/run/component/meta.sock")),
-            database_path: PathBuf::from("/var/component/state.sema"),
+            database_path: PathBuf::from("/var/component/state.memory"),
             trace_socket_path: Some(PathBuf::from("/run/component/trace.sock")),
         }
     }
@@ -84,7 +84,7 @@ fn single_listener_configuration_exposes_only_the_working_tier() {
     assert_eq!(configuration.meta_socket_path(), None);
     assert_eq!(
         configuration.database_path(),
-        Path::new("/var/component/state.sema")
+        Path::new("/var/component/state.memory")
     );
     assert_eq!(configuration.trace_socket_path(), None);
     assert_eq!(configuration.meta_socket_mode(), None);
