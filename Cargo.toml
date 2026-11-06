@@ -1,6 +1,6 @@
 [package]
 name         = "triad-runtime"
-version      = "0.10.1"
+version      = "0.11.0"
 edition      = "2024"
 rust-version = "1.88.0"
 license      = "MIT OR Apache-2.0"
@@ -18,8 +18,8 @@ datom = ["dep:datom-codec", "dep:protos"]
 kameo = { git = "https://github.com/LiGoldragon/kameo.git", rev = "f491b45d7dcb55e5837eddde3d5d7ca8ceaa9f01", default-features = false, features = ["macros", "tracing"] }
 rkyv = { version = "0.8", default-features = false, features = ["std", "bytecheck", "little_endian", "pointer_width_32", "unaligned"] }
 rustix = { version = "1", default-features = false, features = ["std", "net"] }
-datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927", optional = true }
-protos = { git = "https://github.com/LiGoldragon/protos", rev = "1febca7836bf8d5f5973a302fdd50aa9c84c159b", optional = true }
+datom-codec = { git = "https://github.com/LiGoldragon/datom-codec", rev = "eabead48b31e8d4f429d7fb156dd18548bbd79c1", optional = true }
+protos = { git = "https://github.com/LiGoldragon/protos", rev = "3c7ade3", optional = true }
 thiserror = "2"
 tokio = { version = "1.47", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
 

@@ -57,8 +57,8 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "datom-codec"
-version = "0.31.0"
-source = "git+https://github.com/LiGoldragon/datom-codec?rev=09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927#09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927"
+version = "0.33.0"
+source = "git+https://github.com/LiGoldragon/datom-codec?rev=eabead48b31e8d4f429d7fb156dd18548bbd79c1#eabead48b31e8d4f429d7fb156dd18548bbd79c1"
 dependencies = [
  "datom-codec-derive",
  "protos",
@@ -66,8 +66,8 @@ dependencies = [
 
 [[package]]
 name = "datom-codec-derive"
-version = "0.31.0"
-source = "git+https://github.com/LiGoldragon/datom-codec?rev=09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927#09e2a9d52bf7f2f11e51d15cb6c3177f72c6c927"
+version = "0.32.3"
+source = "git+https://github.com/LiGoldragon/datom-codec?rev=eabead48b31e8d4f429d7fb156dd18548bbd79c1#eabead48b31e8d4f429d7fb156dd18548bbd79c1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -391,8 +391,8 @@ dependencies = [
 
 [[package]]
 name = "protos"
-version = "0.31.0"
-source = "git+https://github.com/LiGoldragon/protos?rev=1febca7836bf8d5f5973a302fdd50aa9c84c159b#1febca7836bf8d5f5973a302fdd50aa9c84c159b"
+version = "0.33.0"
+source = "git+https://github.com/LiGoldragon/protos?rev=3c7ade3#3c7ade34010cec6cec153ae694ee335f7fea0193"
 
 [[package]]
 name = "ptr_meta"
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "triad-runtime"
-version = "0.10.1"
+version = "0.11.0"
 dependencies = [
  "datom-codec",
  "kameo",

@@ -25,7 +25,7 @@ use triad_runtime::{Action, Never, NextStep, Work};
 fn budget() -> Budget {
     Budget {
         remaining: 4_096,
-        reader: ReaderBudget { remaining: 4_096 },
+        reader: ReaderBudget::try_from(4_096).expect("bounded reader budget"),
         depth: 0,
         maximum_depth: 4_096,
     }
